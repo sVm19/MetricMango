@@ -20,7 +20,7 @@ function formatPrice(currency, amount) {
 }
 
 export default function Dashboard() {
-  const { overview, loading: accessLoading, error: accessError } = useAccess();
+  const { overview, loading: accessLoading, error: accessError, locked } = useAccess();
   const [pricing, setPricing] = useState(null);
   const [pricingLoading, setPricingLoading] = useState(true);
   const [pricingError, setPricingError] = useState("");

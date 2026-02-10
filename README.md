@@ -10,7 +10,7 @@ Metric Mango is a lightweight backend-first SaaS API built for small ecommerce t
 
 ## Folder Structure
 - `functions/` Firebase Functions backend
-- `frontend/` React dashboard
+- `dashboard/` React dashboard
 
 ## Firestore Data Model
 - `stores/{storeId}`
@@ -68,7 +68,7 @@ All dashboard/forecast endpoints require `storeId` and a store with `plan` set t
 cd functions
 npm install
 
-cd ../frontend
+cd ../dashboard
 npm install
 ```
 
@@ -76,7 +76,7 @@ npm install
 
 Copy and edit env files:
 - `functions/.env.example` -> `functions/.env`
-- `frontend/.env.example` -> `frontend/.env`
+- `dashboard/.env.example` -> `dashboard/.env`
 
 Alert email settings (Resend):
 - `RESEND_API_KEY`
@@ -94,21 +94,29 @@ Billing settings (Razorpay):
 - `RAZORPAY_PLAN_ID`
 
 ### Production Config (Firebase Functions)
-Secrets must never be bundled into the frontend. Store them in Firebase Functions config:
-```bash
-firebase functions:config:set \
-  lemon_squeezy.store_id="..." \
-  lemon_squeezy.api_key="..." \
-  lemon_squeezy.webhook_secret="..." \
-  razorpay.key_id="..." \
-  razorpay.key_secret="..." \
-  razorpay.webhook_secret="..." \
-  razorpay.plan_id="..." \
-  shopify.webhook_secret="..." \
-  resend.api_key="..." \
-  resend.from="Metric Mango <alerts@metricmango.com>"
+Secrets must never be bundled into the frontend. This backend now reads config from environment variables (`process.env`) only.
+
+For local dev:
+- keep values in `functions/.env` (copy from `functions/.env.example`)
+
+For production deploy:
+- set variables in your deploy environment (CI/CD or shell before running `firebase deploy`)
+- keep sensitive values in Google Secret Manager if required by your security policy
+
+Example (PowerShell):
+```powershell
+$env:LEMON_SQUEEZY_STORE_ID="..."
+$env:LEMON_SQUEEZY_API_KEY="..."
+$env:LEMON_SQUEEZY_WEBHOOK_SECRET="..."
+$env:RAZORPAY_KEY_ID="..."
+$env:RAZORPAY_KEY_SECRET="..."
+$env:RAZORPAY_WEBHOOK_SECRET="..."
+$env:RAZORPAY_PLAN_ID="..."
+$env:SHOPIFY_WEBHOOK_SECRET="..."
+$env:RESEND_API_KEY="..."
+$env:RESEND_FROM="Metric Mango <alerts@metricmango.com>"
+firebase deploy --only functions
 ```
-The backend prefers `functions.config()` and only falls back to `functions/.env` for local dev.
 
 ### 3) Run Firebase Functions locally
 
@@ -120,7 +128,7 @@ npm run serve
 ### 4) Run the React dashboard
 
 ```
-cd frontend
+cd dashboard
 npm run dev
 ```
 
@@ -174,7 +182,7 @@ Metric Mango can support multiple payment providers without duplicating business
 - `plan` is initialized to `trial` and `trialStartAt` is set
 
 ## Razorpay Subscriptions (India)
-- Create a subscription with `POST /billing/razorpay/subscribe` (uses `RAZORPAY_PLAN_ID` from Functions config)
+- Create a subscription with `POST /billing/razorpay/subscribe` (uses `RAZORPAY_PLAN_ID` from environment config)
 - Webhook updates `stores.plan` on `subscription_activated`, `subscription_cancelled`, `subscription_expired`
 - Razorpay Checkout supports UPI + cards; backend only creates the subscription
 

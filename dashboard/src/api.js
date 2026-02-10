@@ -1,6 +1,6 @@
 import { auth } from "./firebase.js";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || "";
 const trialExpiredListeners = new Set();
 const unauthorizedListeners = new Set();
 

@@ -1,23 +1,6 @@
-const functions = require("firebase-functions");
-
-function getFunctionsConfig() {
-  try {
-    return functions.config() || {};
-  } catch (error) {
-    // In some local contexts, functions.config() may not be available.
-    return {};
-  }
-}
-
 function getSecret(path, envFallback) {
-  const config = getFunctionsConfig();
-  const parts = String(path).split(".");
-  let current = config;
-  for (const part of parts) {
-    current = current && Object.prototype.hasOwnProperty.call(current, part) ? current[part] : undefined;
-  }
-
-  if (typeof current === "string" && current.trim()) return current.trim();
+  // `path` is kept for backward compatibility with existing call sites.
+  void path;
   const fromEnv = process.env[envFallback];
   if (typeof fromEnv === "string" && fromEnv.trim()) return fromEnv.trim();
   return "";
