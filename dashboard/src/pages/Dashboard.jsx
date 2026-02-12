@@ -71,7 +71,7 @@ export default function Dashboard() {
   const chartBars = [0.28, 0.42, 0.36, 0.55, 0.64, 0.58, 0.74];
 
   return (
-    <div className="page">
+    <div className="page dashboard-page">
       {safeOverview.trial?.active ? (
         <div className="trial-banner" role="status" aria-live="polite">
           One plan. All features. {pricing ? `7 days free. Then ${formatPrice(pricing.currency, pricing.amount)}/month.` : "7 days free."}
@@ -96,7 +96,7 @@ export default function Dashboard() {
 
       <div className="section-divider" aria-hidden="true" />
 
-      <section className="card dashboard-section">
+      <section className="card dashboard-section dashboard-performance">
         <div className="section-heading">
           <h2>Performance</h2>
           <p className="page-subtitle">Visual snapshot of recent store momentum.</p>
@@ -143,7 +143,7 @@ export default function Dashboard() {
 
       <div className="section-divider" aria-hidden="true" />
 
-      <section className="card">
+      <section className="card dashboard-section">
         <h2>Pricing</h2>
         {pricing ? (
           <div className="pricing-row">
@@ -159,7 +159,10 @@ export default function Dashboard() {
             </div>
           </div>
         ) : (
-          <div className="empty">{pricingLoading ? "Loading pricing..." : pricingError || "Pricing unavailable"}</div>
+          <EmptyState
+            title={pricingLoading ? "Loading pricing..." : "Pricing unavailable"}
+            description={pricingLoading ? "Fetching the latest plan details for your store." : pricingError || "Please retry in a moment."}
+          />
         )}
       </section>
       {isEmptyStore ? (

@@ -71,16 +71,66 @@ function AuthLoadingPage({ message }) {
 
 function LandingPage() {
   return (
-    <div className="landing-shell">
-      <section className="landing-hero">
-        <div className="hero-pill">Metric Mango</div>
-        <h1>One dashboard for ecommerce growth</h1>
-        <p>Track sales, forecast demand, and restock smarter. One plan. All features.</p>
-        <div className="landing-actions">
-          <Button as={Link} to="/signup" variant="primary">Start Free Trial</Button>
-          <Button as={Link} to="/signin" variant="secondary">Sign In</Button>
-        </div>
-      </section>
+    <div className="lp-shell">
+      <div className="lp-glow" aria-hidden="true" />
+      <main className="lp-container">
+        <section className="lp-hero">
+          <div className="lp-pill">Metric Mango for Shopify</div>
+          <h1>Predict Sales. Prevent Stockouts.</h1>
+          <p>Simple sales analytics for Shopify stores.</p>
+          <div className="lp-actions">
+            <Button as={Link} to="/signup" variant="primary">Start Free 7-Day Trial</Button>
+            <Button as={Link} to="/signin" variant="secondary">Connect Your Store</Button>
+          </div>
+        </section>
+
+        <section className="lp-section">
+          <h2>Problem</h2>
+          <p>
+            Most store owners discover demand shifts too late. Inventory runs out, ad spend gets wasted, and revenue drops before teams can react.
+          </p>
+        </section>
+
+        <section className="lp-section">
+          <h2>Solution</h2>
+          <p>
+            Metric Mango gives a clear daily command center for sales, demand forecasts, and restock signals so you can move before stockouts hit.
+          </p>
+        </section>
+
+        <section className="lp-section">
+          <h2>Features</h2>
+          <div className="lp-features">
+            <article className="lp-feature-card">
+              <h3>Forecasting</h3>
+              <p>See demand trends across 7, 14, and 30 days with actionable projections.</p>
+            </article>
+            <article className="lp-feature-card">
+              <h3>Restock Alerts</h3>
+              <p>Know exactly which products need attention before they become a lost-sale risk.</p>
+            </article>
+            <article className="lp-feature-card">
+              <h3>Store Analytics</h3>
+              <p>Track revenue and order movement in one focused dashboard your team can trust.</p>
+            </article>
+          </div>
+        </section>
+
+        <section className="lp-section lp-pricing">
+          <h2>Pricing</h2>
+          <p>One plan. All features. No tiers.</p>
+          <div className="lp-price">₹499 / $9<span> per month</span></div>
+        </section>
+
+        <section className="lp-section lp-final-cta">
+          <h2>Ready to run a smarter store?</h2>
+          <p>Launch in minutes and get the clarity your team needs to scale inventory decisions.</p>
+          <div className="lp-actions">
+            <Button as={Link} to="/signup" variant="primary">Start Free 7-Day Trial</Button>
+            <Button as={Link} to="/signin" variant="secondary">Connect Your Store</Button>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }

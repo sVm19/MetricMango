@@ -47,7 +47,7 @@ export default function Forecast() {
   const hasAnyData = forecast.length > 0 || restock.length > 0;
 
   return (
-    <div className="page">
+    <div className="page dashboard-page">
       {locked ? (
         <div className="trial-banner" role="status" aria-live="polite">
           Trial expired. Upgrade to unlock Forecast and Restock.
@@ -69,12 +69,14 @@ export default function Forecast() {
             <p className="page-subtitle">Recent averages and restock guidance.</p>
           </div>
         </div>
-        <section className="card">
+        <div className="section-divider" aria-hidden="true" />
+        <section className="card dashboard-section">
           <h2>7-Day Forecast</h2>
           {forecast.length === 0 ? (
-            <div className="empty">
-              {locked ? "Upgrade to Pro — one plan, all features." : "No forecast data yet."}
-            </div>
+            <EmptyState
+              title={locked ? "Upgrade to unlock Forecast" : "No forecast data yet"}
+              description={locked ? "Your trial has expired. Upgrade to restore forecasting." : "Forecast data will appear once orders are synced."}
+            />
           ) : (
             <div className="table-wrap">
               <table>
@@ -103,12 +105,13 @@ export default function Forecast() {
           )}
         </section>
 
-        <section className="card">
+        <section className="card dashboard-section">
           <h2>Restock Suggestions</h2>
           {restock.length === 0 ? (
-            <div className="empty">
-              {locked ? "Upgrade to Pro — no tiers, no upsells." : "No restock suggestions yet."}
-            </div>
+            <EmptyState
+              title={locked ? "Upgrade to unlock Restock Suggestions" : "No restock suggestions yet"}
+              description={locked ? "Your trial has expired. Upgrade to restore restock recommendations." : "Restock signals will appear after sales activity is available."}
+            />
           ) : (
             <div className="table-wrap">
               <table>

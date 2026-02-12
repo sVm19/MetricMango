@@ -63,14 +63,15 @@ export default function Products() {
   if (error && !locked) return <div className="empty">{error}</div>;
 
   return (
-    <div className="page">
+    <div className="page dashboard-page">
       <div className="page-header">
         <div>
           <h2>Products</h2>
           <p className="page-subtitle">Current inventory for this store.</p>
         </div>
       </div>
-      <section className="card">
+      <div className="section-divider" aria-hidden="true" />
+      <section className="card dashboard-section">
         <div className="card-actions">
           <h2>Products Overview</h2>
           <div className="csv-actions">
@@ -99,8 +100,18 @@ export default function Products() {
           </div>
         </div>
 
-        {locked ? <div className="empty">CSV export is locked after trial expiry. Upgrade to continue.</div> : null}
-        {exportError ? <div className="empty">{exportError}</div> : null}
+        {locked ? (
+          <EmptyState
+            title="CSV export is locked"
+            description="Your trial has expired. Upgrade to continue exporting data."
+          />
+        ) : null}
+        {exportError ? (
+          <EmptyState
+            title="Unable to export CSV right now"
+            description={exportError}
+          />
+        ) : null}
         <ProductTable rows={rows} />
         {!locked && rows.length === 0 ? (
           <EmptyState
