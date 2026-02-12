@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from "react";
+import Button from "../components/Button.jsx";
+import EmptyState from "../components/EmptyState.jsx";
 import ProductTable from "../components/ProductTable.jsx";
 import { exportOrdersCsv, exportProductsCsv, getProducts } from "../api.js";
 import { useAccess } from "../access/AccessContext.jsx";
@@ -72,34 +74,39 @@ export default function Products() {
         <div className="card-actions">
           <h2>Products Overview</h2>
           <div className="csv-actions">
-            <button
+            <Button
               type="button"
-              className="auth-btn auth-btn-primary"
               disabled={locked || exporting === "orders"}
+              loading={exporting === "orders"}
+              loadingText="Exporting..."
+              variant="secondary"
               onClick={() => handleExport("orders")}
               title={locked ? "Upgrade to unlock CSV export" : ""}
             >
-              {exporting === "orders" ? "Exporting..." : "Export Orders CSV"}
-            </button>
-            <button
+              Export Orders CSV
+            </Button>
+            <Button
               type="button"
-              className="auth-btn auth-btn-primary"
               disabled={locked || exporting === "products"}
+              loading={exporting === "products"}
+              loadingText="Exporting..."
+              variant="secondary"
               onClick={() => handleExport("products")}
               title={locked ? "Upgrade to unlock CSV export" : ""}
             >
-              {exporting === "products" ? "Exporting..." : "Export Products CSV"}
-            </button>
+              Export Products CSV
+            </Button>
           </div>
         </div>
 
         {locked ? <div className="empty">CSV export is locked after trial expiry. Upgrade to continue.</div> : null}
         {exportError ? <div className="empty">{exportError}</div> : null}
-        <ProductTable rows={rows} emptyLabel="No products yet." />
+        <ProductTable rows={rows} />
         {!locked && rows.length === 0 ? (
-          <div className="empty-state-inline">
-            We&apos;ll show insights once your first order arrives. Create a test order in Shopify to populate products.
-          </div>
+          <EmptyState
+            title="No products yet"
+            description="We'll show insights once your first order arrives. Create a test order in Shopify to populate products."
+          />
         ) : null}
       </section>
     </div>

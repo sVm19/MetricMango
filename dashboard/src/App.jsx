@@ -1,15 +1,20 @@
 import React, { useState } from "react";
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import Button from "./components/Button.jsx";
 import DashboardPage from "./pages/Dashboard.jsx";
 import ProductsPage from "./pages/Products.jsx";
 import ForecastPage from "./pages/Forecast.jsx";
 import PricingPage from "./pages/Pricing.jsx";
 import { useAuth } from "./auth/AuthContext.jsx";
 import { useAccess } from "./access/AccessContext.jsx";
-import { connectShopifyStore, getOnboardingStatus } from "./api.js";
+import { connectShopifyStore, disconnectShopifyStore, getOnboardingStatus } from "./api.js";
 
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isValidShopifyStoreName(value) {
+  return /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)$/.test(String(value || "").trim());
 }
 
 function mapAuthError(err) {
@@ -72,8 +77,8 @@ function LandingPage() {
         <h1>One dashboard for ecommerce growth</h1>
         <p>Track sales, forecast demand, and restock smarter. One plan. All features.</p>
         <div className="landing-actions">
-          <Link className="auth-btn auth-btn-primary" to="/signup">Start Free Trial</Link>
-          <Link className="auth-btn auth-btn-ghost" to="/signin">Sign In</Link>
+          <Button as={Link} to="/signup" variant="primary">Start Free Trial</Button>
+          <Button as={Link} to="/signin" variant="secondary">Sign In</Button>
         </div>
       </section>
     </div>
@@ -166,9 +171,9 @@ function AuthPage({ mode }) {
 
           {error ? <div className="auth-error">{error}</div> : null}
           {success ? <div className="auth-success">{success}</div> : null}
-          <button type="submit" className="auth-btn auth-btn-primary" disabled={submitting}>
-            {submitting ? "Please wait..." : mode === "signup" ? "Sign up" : mode === "forgot" ? "Send reset email" : "Sign in"}
-          </button>
+          <Button type="submit" variant="primary" loading={submitting} loadingText="Please wait...">
+            {mode === "signup" ? "Sign up" : mode === "forgot" ? "Send reset email" : "Sign in"}
+          </Button>
         </form>
         {mode === "signin" ? (
           <>
@@ -222,7 +227,7 @@ function DashboardLayout() {
           <div className="session-meta">
             <span className="session-email">{user?.email || "Signed in"}</span>
             {accessState.trialExpired || locked ? <span className="lock-pill">Locked</span> : null}
-            <button type="button" className="auth-btn auth-btn-primary" onClick={handleLogout}>Logout</button>
+            <Button type="button" variant="secondary" onClick={handleLogout}>Logout</Button>
           </div>
         </div>
       </header>
@@ -235,7 +240,7 @@ function DashboardLayout() {
         {onboardingRequired && !location.pathname.startsWith("/dashboard/onboarding") ? (
           <div className="upgrade-banner" role="status">
             <span>Complete onboarding to continue.</span>
-            <button type="button" className="upgrade-banner-btn" onClick={() => navigate("/dashboard/onboarding")}>Continue</button>
+            <Button type="button" variant="primary" onClick={() => navigate("/dashboard/onboarding")}>Continue</Button>
           </div>
         ) : null}
         <Outlet />
@@ -246,26 +251,39 @@ function DashboardLayout() {
 
 function OnboardingPage() {
   const { finishOnboarding } = useAuth();
-  const [shopUrl, setShopUrl] = useState("");
+  const [shopName, setShopName] = useState("");
   const [loading, setLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [status, setStatus] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showDisconnect, setShowDisconnect] = useState(false);
 
   async function handleConnect(event) {
     event.preventDefault();
+    const normalizedShopName = String(shopName || "").trim().toLowerCase();
     setLoading(true);
     setError("");
     setSuccess("");
+
+    if (!isValidShopifyStoreName(normalizedShopName)) {
+      setLoading(false);
+      setError("Enter a valid Shopify store name using letters, numbers, and hyphens only.");
+      return;
+    }
+
     try {
-      const response = await connectShopifyStore(shopUrl.trim());
-      setSuccess(response?.message || "Shopify connection started.");
-      if (response?.installUrl) {
-        window.open(response.installUrl, "_blank", "noopener,noreferrer");
+      const response = await connectShopifyStore(normalizedShopName);
+      const redirectUrl = String(response?.redirectUrl || response?.installUrl || "").trim();
+      if (!redirectUrl) {
+        setSuccess(response?.message || "Shopify connection started.");
+        return;
       }
-    } catch {
-      setError("Unable to connect Shopify right now.");
+      window.location.assign(redirectUrl);
+    } catch (requestError) {
+      const message = requestError?.message || requestError?.data?.error || "Unable to connect Shopify right now.";
+      setError(message);
+      setShowDisconnect(message.toLowerCase().includes("already"));
     } finally {
       setLoading(false);
     }
@@ -303,27 +321,54 @@ function OnboardingPage() {
         <h2>Complete Onboarding</h2>
         <p className="auth-subtitle">Connect your Shopify store, then continue to dashboard.</p>
         <form onSubmit={handleConnect} className="auth-form">
-          <label htmlFor="shop-url">Shopify URL</label>
+          <label htmlFor="shop-name">Shopify store name</label>
           <input
-            id="shop-url"
+            id="shop-name"
             type="text"
-            value={shopUrl}
-            onChange={event => setShopUrl(event.target.value)}
-            placeholder="your-shop.myshopify.com"
+            value={shopName}
+            onChange={event => setShopName(event.target.value)}
+            placeholder="example-store"
             required
           />
-          <button type="submit" className="auth-btn auth-btn-primary" disabled={loading}>
-            {loading ? "Connecting..." : "Connect Shopify"}
-          </button>
+          <Button type="submit" variant="primary" loading={loading} loadingText="Connecting...">
+            Connect Shopify Store
+          </Button>
         </form>
         <div className="landing-actions">
-          <button type="button" className="auth-btn auth-btn-ghost" onClick={handleRefreshStatus} disabled={statusLoading}>
-            {statusLoading ? "Checking..." : "Check Status"}
-          </button>
-          <button type="button" className="auth-btn auth-btn-primary" onClick={handleFinish} disabled={loading}>
+          <Button type="button" variant="secondary" onClick={handleRefreshStatus} disabled={loading} loading={statusLoading} loadingText="Checking...">
+            Check Status
+          </Button>
+          <Button type="button" variant="primary" onClick={handleFinish} disabled={statusLoading} loading={loading} loadingText="Working...">
             Complete Onboarding
-          </button>
+          </Button>
         </div>
+        {showDisconnect ? (
+          <div className="onboarding-note">
+            <div>You already have a store connected.</div>
+            <Button
+              type="button"
+              variant="danger"
+              loading={loading}
+              loadingText="Disconnecting..."
+              onClick={async () => {
+                setError("");
+                setSuccess("");
+                try {
+                  setLoading(true);
+                  const result = await disconnectShopifyStore();
+                  setSuccess(result?.message || "Disconnected current store. You can connect a new one now.");
+                  setShowDisconnect(false);
+                } catch (disconnectError) {
+                  setError(disconnectError?.message || "Unable to disconnect right now.");
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            >
+              Disconnect current store
+            </Button>
+          </div>
+        ) : null}
         {status ? (
           <div className="onboarding-note">
             <div>Store connected: {status.storeConnected ? "Yes" : "No"}</div>

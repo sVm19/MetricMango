@@ -8,9 +8,9 @@ function formatMoney(value) {
   }).format(value || 0);
 }
 
-export default function ProductTable({ rows, emptyLabel }) {
+export default function ProductTable({ rows }) {
   if (!rows || rows.length === 0) {
-    return <div className="empty">{emptyLabel}</div>;
+    return null;
   }
 
   return (

@@ -49,3 +49,6 @@ build/Release
 
 .DS_Store
 .vscode-test
+
+.vercel
+.env*.local

@@ -74,6 +74,20 @@ async function getFirebaseUserFromRequest(req) {
   }
 }
 
+async function requireFirebaseUser(req, res, next) {
+  try {
+    const firebaseUser = await getFirebaseUserFromRequest(req);
+    if (!firebaseUser?.uid) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    req.firebaseUser = firebaseUser;
+    return next();
+  } catch (error) {
+    console.error("Firebase auth verification error:", error);
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+}
+
 function defaultFeatures() {
   return {
     emailAlerts: true,
@@ -832,25 +846,87 @@ app.post("/onboarding/reset", async (req, res) => {
   }
 });
 
-function normalizeShopifyUrl(input) {
+const SHOPIFY_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const SHOPIFY_TOKEN_ENCRYPTION_ALGORITHM = "aes-256-gcm";
+const SHOPIFY_REQUIRED_WEBHOOK_TOPICS = ["orders/create", "orders/updated", "orders/cancelled"];
+const SHOPIFY_SHOP_DOMAIN_REGEX = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\.myshopify\.com$/;
+const SHOPIFY_STORE_NAME_REGEX = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)$/;
+
+function normalizeShopifyDomain(input) {
   const raw = String(input || "").trim();
   if (!raw) return "";
 
   const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   try {
     const parsed = new URL(withProtocol);
-    return parsed.hostname.toLowerCase();
+    return String(parsed.hostname || "").trim().toLowerCase();
   } catch (error) {
     return "";
   }
+}
+
+function parseShopifyDomain(input) {
+  const normalized = normalizeShopifyDomain(input);
+  if (!normalized) return "";
+  if (!SHOPIFY_SHOP_DOMAIN_REGEX.test(normalized)) return "";
+  return normalized;
+}
+
+function getShopifyCallbackUri() {
+  const shopifyConfig = getShopifyConfig();
+  const configuredRedirectUri = String(shopifyConfig.redirectUri || "").trim();
+  if (configuredRedirectUri) return configuredRedirectUri;
+
+  const appUrl = String(shopifyConfig.appUrl || "").replace(/\/+$/, "");
+  if (!appUrl) return "";
+  return `${appUrl}/shopify/callback`;
+}
+
+function getShopifyDashboardRedirectUrl() {
+  const appUrl = String(getShopifyConfig().appUrl || "").replace(/\/+$/, "");
+  if (appUrl) {
+    return `${appUrl}/`;
+  }
+  return "https://metricmango.store/";
+}
+
+function getShopifyApiVersion() {
+  const configuredVersion = String(getShopifyConfig().apiVersion || "").trim();
+  return configuredVersion || "2024-10";
+}
+
+function getShopifyWebhookBaseUrl() {
+  const callbackUri = getShopifyCallbackUri();
+  if (callbackUri) {
+    try {
+      const parsed = new URL(callbackUri);
+      const normalizedPath = String(parsed.pathname || "").replace(/\/+$/, "");
+      const callbackSuffix = "/shopify/callback";
+      const basePath = normalizedPath.endsWith(callbackSuffix)
+        ? normalizedPath.slice(0, -callbackSuffix.length)
+        : normalizedPath;
+      return `${parsed.origin}${basePath}`;
+    } catch (error) {
+      // Fall back to app URL if callback URI is not parseable.
+    }
+  }
+
+  const appUrl = String(getShopifyConfig().appUrl || "").replace(/\/+$/, "");
+  if (!appUrl) return "";
+  return `${appUrl}/api`;
+}
+
+function buildShopifyWebhookAddress(storeId) {
+  const baseUrl = String(getShopifyWebhookBaseUrl() || "").replace(/\/+$/, "");
+  if (!baseUrl) return "";
+  return `${baseUrl}/webhook/shopify/order-created?storeId=${encodeURIComponent(String(storeId || ""))}`;
 }
 
 function buildShopifyInstallUrl({ shopDomain, state }) {
   const shopifyConfig = getShopifyConfig();
   const apiKey = String(shopifyConfig.appApiKey || "").trim();
   const scopes = String(shopifyConfig.scopes || "").trim();
-  const appUrl = String(shopifyConfig.appUrl || "").replace(/\/+$/, "");
-  const redirectUri = String(shopifyConfig.redirectUri || "").trim() || `${appUrl}/shopify/callback`;
+  const redirectUri = getShopifyCallbackUri();
 
   if (!apiKey || !redirectUri || !scopes) {
     return "";
@@ -866,44 +942,548 @@ function buildShopifyInstallUrl({ shopDomain, state }) {
   return `https://${shopDomain}/admin/oauth/authorize?${params.toString()}`;
 }
 
-app.post("/onboarding/shopify/connect", apiKeyGate, apiRateLimit, async (req, res) => {
+function shopifyOauthHmacPayload(query = {}) {
+  const pairs = [];
+  Object.keys(query)
+    .filter(key => key !== "hmac" && key !== "signature")
+    .sort()
+    .forEach(key => {
+      const value = Array.isArray(query[key]) ? query[key].join(",") : String(query[key] || "");
+      pairs.push(`${key}=${value}`);
+    });
+  return pairs.join("&");
+}
+
+function timingSafeCompareStrings(left, right) {
+  const leftValue = String(left || "");
+  const rightValue = String(right || "");
+  const leftBuffer = Buffer.from(leftValue, "utf8");
+  const rightBuffer = Buffer.from(rightValue, "utf8");
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function verifyShopifyOauthHmac(query = {}) {
+  const apiSecret = String(getShopifyConfig().appApiSecret || "").trim();
+  const providedHmac = String(query.hmac || "").trim().toLowerCase();
+  if (!apiSecret || !providedHmac) return false;
+
+  const payload = shopifyOauthHmacPayload(query);
+  const expectedHmac = crypto.createHmac("sha256", apiSecret).update(payload).digest("hex");
+  return timingSafeCompareStrings(providedHmac, expectedHmac);
+}
+
+function getShopifyTokenEncryptionKey() {
+  const rawKey = String(getShopifyConfig().tokenEncryptionKey || "").trim();
+  if (!rawKey) return null;
+
+  const looksLikeBase64 = /^[A-Za-z0-9+/]+={0,2}$/.test(rawKey) && rawKey.length % 4 === 0;
+  if (looksLikeBase64) {
+    const decoded = Buffer.from(rawKey, "base64");
+    if (decoded.length === 32) {
+      return decoded;
+    }
+  }
+
+  // Keep local setup simple: any non-empty string can be used and is normalized to 32 bytes.
+  return crypto.createHash("sha256").update(rawKey).digest();
+}
+
+function encryptShopifyAccessToken(accessToken) {
+  const key = getShopifyTokenEncryptionKey();
+  if (!key) {
+    throw new Error("Missing SHOPIFY_TOKEN_ENCRYPTION_KEY");
+  }
+  const plainToken = String(accessToken || "").trim();
+  if (!plainToken) {
+    throw new Error("Missing Shopify access token");
+  }
+
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(SHOPIFY_TOKEN_ENCRYPTION_ALGORITHM, key, iv);
+  const encrypted = Buffer.concat([cipher.update(plainToken, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return [
+    "v1",
+    iv.toString("base64"),
+    authTag.toString("base64"),
+    encrypted.toString("base64")
+  ].join(":");
+}
+
+async function saveShopifyOauthState({ state, userId, storeId, shopDomain }) {
+  const now = admin.firestore.Timestamp.now();
+  const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + SHOPIFY_OAUTH_STATE_TTL_MS);
+  await db.collection("shopify_oauth_states").doc(String(state)).set({
+    state: String(state),
+    userId: String(userId),
+    storeId: String(storeId),
+    shopDomain: String(shopDomain),
+    createdAt: now,
+    expiresAt,
+    consumedAt: null
+  });
+}
+
+async function consumeShopifyOauthState(state) {
+  const stateId = String(state || "").trim();
+  if (!stateId) return null;
+  const stateRef = db.collection("shopify_oauth_states").doc(stateId);
+
+  return db.runTransaction(async tx => {
+    const now = admin.firestore.Timestamp.now();
+    const snap = await tx.get(stateRef);
+    if (!snap.exists) {
+      return null;
+    }
+    const data = snap.data() || {};
+    const isConsumed = Boolean(data.consumedAt);
+    const expiresAtMs = data.expiresAt?.toMillis ? data.expiresAt.toMillis() : 0;
+    const isExpired = !expiresAtMs || Date.now() > expiresAtMs;
+    if (isConsumed || isExpired) {
+      if (isExpired && !data.expiredAt) {
+        tx.set(stateRef, { expiredAt: now }, { merge: true });
+      }
+      return null;
+    }
+
+    tx.set(stateRef, { consumedAt: now }, { merge: true });
+    return data;
+  });
+}
+
+function isShopifyConnectedStore(store = {}) {
+  const hasShopDomain = Boolean(String(store.shopDomain || "").trim());
+  const hasEncryptedToken = Boolean(String(store.encryptedAccessToken || "").trim());
+  return Boolean(store.shopifyConnected) || (hasShopDomain && hasEncryptedToken);
+}
+
+async function exchangeShopifyCodeForAccessToken({ shopDomain, code }) {
+  const shopifyConfig = getShopifyConfig();
+  const apiKey = String(shopifyConfig.appApiKey || "").trim();
+  const apiSecret = String(shopifyConfig.appApiSecret || "").trim();
+  const authCode = String(code || "").trim();
+
+  if (!apiKey || !apiSecret) {
+    throw new Error("Missing SHOPIFY_APP_API_KEY or SHOPIFY_APP_API_SECRET");
+  }
+  if (!authCode) {
+    throw new Error("Missing Shopify authorization code");
+  }
+
+  const response = await fetch(`https://${shopDomain}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json"
+    },
+    body: JSON.stringify({
+      client_id: apiKey,
+      client_secret: apiSecret,
+      code: authCode
+    })
+  });
+
+  const bodyText = await response.text();
+  let payload = {};
   try {
-    const storeId = String(req.storeId || "");
+    payload = bodyText ? JSON.parse(bodyText) : {};
+  } catch (error) {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    const reason = String(payload.error_description || payload.error || bodyText || response.status);
+    throw new Error(`Shopify token exchange failed: ${reason}`);
+  }
+
+  const accessToken = String(payload.access_token || "").trim();
+  if (!accessToken) {
+    throw new Error("Shopify token exchange response missing access_token");
+  }
+  return accessToken;
+}
+
+async function registerSingleShopifyWebhook({ shopDomain, accessToken, topic, address }) {
+  const apiVersion = getShopifyApiVersion();
+  const endpoint = `https://${shopDomain}/admin/api/${apiVersion}/webhooks.json`;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      "x-shopify-access-token": String(accessToken)
+    },
+    body: JSON.stringify({
+      webhook: {
+        topic,
+        address,
+        format: "json"
+      }
+    })
+  });
+
+  const bodyText = await response.text();
+  let payload = {};
+  try {
+    payload = bodyText ? JSON.parse(bodyText) : {};
+  } catch (error) {
+    payload = {};
+  }
+
+  if (response.status === 422) {
+    return {
+      topic,
+      status: "exists",
+      webhookId: String(payload?.webhook?.id || "")
+    };
+  }
+  if (!response.ok) {
+    const reason = String(payload?.errors || payload?.error || bodyText || response.status);
+    throw new Error(`Failed to register webhook ${topic}: ${reason}`);
+  }
+
+  return {
+    topic,
+    status: "created",
+    webhookId: String(payload?.webhook?.id || "")
+  };
+}
+
+async function registerRequiredShopifyWebhooks({ shopDomain, accessToken, storeId }) {
+  const address = buildShopifyWebhookAddress(storeId);
+  if (!address) {
+    throw new Error("Missing webhook callback URL configuration");
+  }
+
+  const results = [];
+  for (const topic of SHOPIFY_REQUIRED_WEBHOOK_TOPICS) {
+    const result = await registerSingleShopifyWebhook({
+      shopDomain,
+      accessToken,
+      topic,
+      address
+    });
+    results.push(result);
+  }
+
+  return { address, results };
+}
+
+async function handleShopifyConnect(req, res) {
+  try {
+    const firebaseUser = req.firebaseUser;
+    const userId = String(firebaseUser?.uid || "");
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const mapping = await ensureUserStoreMapping({
+      uid: userId,
+      email: firebaseUser?.email || "",
+      country: resolveCountryFromRequest(req)
+    });
+    const storeId = String(mapping?.storeId || "");
     if (!storeId) {
       return res.status(400).json({ error: "Missing store context" });
     }
 
-    const shopDomain = normalizeShopifyUrl(req.body?.shopUrl);
-    if (!shopDomain) {
-      return res.status(400).json({ error: "Invalid Shopify store URL" });
+    const storeRef = db.collection("stores").doc(storeId);
+    const storeSnap = await storeRef.get();
+    if (!storeSnap.exists) {
+      return res.status(404).json({ error: "Store not found" });
     }
-    if (!shopDomain.endsWith(".myshopify.com")) {
-      return res.status(400).json({ error: "Use your .myshopify.com store URL" });
+    const storeData = storeSnap.data() || {};
+    if (String(storeData.ownerUserId || "") !== userId) {
+      return res.status(403).json({ error: "store_access_denied" });
+    }
+    if (isShopifyConnectedStore(storeData)) {
+      return res.status(409).json({ error: "Shopify store is already connected for this account" });
     }
 
-    const state = crypto.randomBytes(16).toString("hex");
-    const installUrl = buildShopifyInstallUrl({ shopDomain, state });
-    if (!installUrl) {
-      return res.status(500).json({ error: "Shopify install is not configured on server" });
+    const ownedStores = await getOwnedStores(userId);
+    const hasConnectedStore = ownedStores.some(doc => {
+      if (String(doc.id) === storeId) return false;
+      return isShopifyConnectedStore(doc.data() || {});
+    });
+    if (hasConnectedStore) {
+      return res.status(409).json({ error: "Only one Shopify store can be connected per user" });
     }
+
+    const shopifyConfig = getShopifyConfig();
+    const appApiKey = String(shopifyConfig.appApiKey || "").trim();
+    const appApiSecret = String(shopifyConfig.appApiSecret || "").trim();
+    const redirectUri = String(getShopifyCallbackUri() || "").trim();
+    const webhookAddress = buildShopifyWebhookAddress(storeId);
+    if (!appApiKey || !appApiSecret || !redirectUri) {
+      return res.status(500).json({ error: "Shopify OAuth is not configured on server" });
+    }
+    if (!getShopifyTokenEncryptionKey()) {
+      return res.status(500).json({ error: "Missing Shopify token encryption configuration" });
+    }
+    if (!webhookAddress) {
+      return res.status(500).json({ error: "Missing Shopify webhook callback configuration" });
+    }
+
+    const requestedShop = req.body?.shop ?? req.body?.shopUrl;
+    const storeName = String(req.body?.storeName || req.body?.shopName || "").trim().toLowerCase();
+    let shopDomain = "";
+    if (storeName) {
+      if (!SHOPIFY_STORE_NAME_REGEX.test(storeName)) {
+        return res.status(400).json({ error: "Invalid Shopify store name. Use letters, numbers, and hyphens only." });
+      }
+      shopDomain = `${storeName}.myshopify.com`;
+    } else {
+      shopDomain = requestedShop;
+    }
+
+    shopDomain = parseShopifyDomain(shopDomain);
+    if (!shopDomain) {
+      return res.status(400).json({ error: "Invalid Shopify shop domain" });
+    }
+
+    const installUrlState = crypto.randomBytes(24).toString("hex");
+    const installUrl = buildShopifyInstallUrl({
+      shopDomain,
+      state: installUrlState
+    });
+    if (!installUrl) {
+      return res.status(500).json({ error: "Shopify OAuth is not configured on server" });
+    }
+
+    await saveShopifyOauthState({
+      state: installUrlState,
+      userId,
+      storeId,
+      shopDomain
+    });
 
     const now = admin.firestore.Timestamp.now();
-    await db.collection("stores").doc(storeId).set({
+    await storeRef.set({
       shopDomain,
+      shopifyConnected: false,
       shopifyInstallStatus: "pending",
       shopifyInstallStartedAt: now,
-      shopifyOauthState: state,
-      shopifyWebhookStatus: "pending"
+      shopifyWebhookStatus: "pending",
+      shopifyConnectionError: admin.firestore.FieldValue.delete(),
+      shopifyConnectionErrorAt: admin.firestore.FieldValue.delete()
     }, { merge: true });
 
     return res.json({
       ok: true,
+      redirectUrl: installUrl,
       installUrl,
-      message: "Shopify connection started"
+      message: "Shopify OAuth started"
     });
   } catch (error) {
-    console.error("Shopify onboarding connect error:", error);
-    return res.status(500).json({ error: "Failed to start Shopify connection" });
+    console.error("Shopify connect error:", {
+      message: String(error?.message || "unknown_error")
+    });
+    return res.status(500).json({ error: "Failed to start Shopify OAuth" });
+  }
+}
+
+app.post("/shopify/connect", requireFirebaseUser, apiRateLimit, handleShopifyConnect);
+app.post("/onboarding/shopify/connect", requireFirebaseUser, apiRateLimit, handleShopifyConnect);
+
+app.post("/shopify/disconnect", requireFirebaseUser, apiRateLimit, async (req, res) => {
+  try {
+    const firebaseUser = req.firebaseUser;
+    const userId = String(firebaseUser?.uid || "");
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const mapping = await ensureUserStoreMapping({
+      uid: userId,
+      email: firebaseUser?.email || ""
+    });
+    const storeId = String(mapping?.storeId || "");
+    if (!storeId) {
+      return res.status(400).json({ error: "Missing store context" });
+    }
+
+    const storeRef = db.collection("stores").doc(storeId);
+    const storeSnap = await storeRef.get();
+    if (!storeSnap.exists) {
+      return res.status(404).json({ error: "Store not found" });
+    }
+    const storeData = storeSnap.data() || {};
+    if (String(storeData.ownerUserId || "") !== userId) {
+      return res.status(403).json({ error: "store_access_denied" });
+    }
+
+    if (!isShopifyConnectedStore(storeData)) {
+      return res.json({ ok: true, disconnected: false, message: "No Shopify store connected." });
+    }
+
+    const now = admin.firestore.Timestamp.now();
+    await storeRef.set({
+      shopifyConnected: false,
+      shopifyInstallStatus: "disconnected",
+      shopifyWebhookStatus: "inactive",
+      shopifyWebhookTopics: [],
+      shopifyWebhookAddress: admin.firestore.FieldValue.delete(),
+      shopifyWebhookRegistration: admin.firestore.FieldValue.delete(),
+      encryptedAccessToken: admin.firestore.FieldValue.delete(),
+      shopifyConnectionError: admin.firestore.FieldValue.delete(),
+      shopifyConnectionErrorAt: admin.firestore.FieldValue.delete(),
+      shopifyDisconnectedAt: now
+    }, { merge: true });
+
+    return res.json({ ok: true, disconnected: true, message: "Shopify store disconnected." });
+  } catch (error) {
+    console.error("Shopify disconnect error:", error);
+    return res.status(500).json({ error: "Failed to disconnect Shopify store" });
+  }
+});
+
+app.get("/shopify/callback", webhookRateLimit, async (req, res) => {
+  let stateRecord = null;
+  let storeId = "";
+  try {
+    const shopDomain = parseShopifyDomain(req.query?.shop);
+    const code = String(req.query?.code || "").trim();
+    const state = String(req.query?.state || "").trim();
+    const hmac = String(req.query?.hmac || "").trim();
+
+    if (!shopDomain || !code || !state || !hmac) {
+      console.warn("Shopify callback rejected: missing parameters", {
+        shopDomain,
+        hasCode: Boolean(code),
+        hasState: Boolean(state),
+        hasHmac: Boolean(hmac)
+      });
+      return res.status(400).send("Invalid Shopify callback parameters");
+    }
+
+    if (!verifyShopifyOauthHmac(req.query)) {
+      console.warn("Shopify callback rejected: invalid HMAC", {
+        shopDomain
+      });
+      return res.status(401).send("Invalid Shopify callback signature");
+    }
+
+    stateRecord = await consumeShopifyOauthState(state);
+    if (!stateRecord) {
+      console.warn("Shopify callback rejected: invalid or expired state", {
+        shopDomain
+      });
+      return res.status(400).send("Invalid or expired Shopify OAuth state");
+    }
+
+    storeId = String(stateRecord.storeId || "");
+    const userId = String(stateRecord.userId || "");
+    const expectedShop = String(stateRecord.shopDomain || "").trim().toLowerCase();
+    if (!storeId || !userId || !expectedShop || expectedShop !== shopDomain) {
+      console.warn("Shopify callback rejected: state mismatch", {
+        storeId,
+        userId,
+        expectedShop,
+        shopDomain
+      });
+      return res.status(400).send("Shopify OAuth state mismatch");
+    }
+
+    // Ensure the authenticated user from the saved session still exists.
+    try {
+      await admin.auth().getUser(userId);
+    } catch (authError) {
+      console.warn("Shopify callback rejected: user not found", {
+        userId,
+        shopDomain,
+        reason: authError?.message || "user_not_found"
+      });
+      return res.status(401).send("Unauthorized");
+    }
+
+    const storeRef = db.collection("stores").doc(storeId);
+    const storeSnap = await storeRef.get();
+    if (!storeSnap.exists) {
+      return res.status(404).send("Store not found");
+    }
+    const storeData = storeSnap.data() || {};
+    if (String(storeData.ownerUserId || "") !== userId) {
+      console.warn("Shopify callback rejected: owner mismatch", {
+        storeId,
+        expectedOwner: userId,
+        actualOwner: String(storeData.ownerUserId || "")
+      });
+      return res.status(403).send("Store access denied");
+    }
+
+    // Enforce one connected Shopify store per user (backend-only check).
+    const ownedStores = await getOwnedStores(userId);
+    const otherConnectedStore = ownedStores.find(doc => String(doc.id) !== storeId && isShopifyConnectedStore(doc.data() || {}));
+    if (otherConnectedStore || isShopifyConnectedStore(storeData)) {
+      const now = admin.firestore.Timestamp.now();
+      await storeRef.set({
+        shopifyInstallStatus: "error",
+        shopifyConnectionError: "Store already connected.",
+        shopifyConnectionErrorAt: now
+      }, { merge: true }).catch(() => {});
+      return res.status(409).send("Store already connected.");
+    }
+
+    const accessToken = await exchangeShopifyCodeForAccessToken({
+      shopDomain,
+      code
+    });
+    const encryptedAccessToken = encryptShopifyAccessToken(accessToken);
+    const webhookRegistration = await registerRequiredShopifyWebhooks({
+      shopDomain,
+      accessToken,
+      storeId
+    });
+
+    const now = admin.firestore.Timestamp.now();
+    await storeRef.set({
+      ownerUserId: userId,
+      shopDomain,
+      encryptedAccessToken,
+      shopifyConnected: true,
+      shopifyInstallStatus: "connected",
+      shopifyConnectedAt: now,
+      shopifyWebhookStatus: "active",
+      shopifyWebhookTopics: SHOPIFY_REQUIRED_WEBHOOK_TOPICS,
+      shopifyWebhookAddress: webhookRegistration.address,
+      shopifyWebhookRegistration: webhookRegistration.results,
+      onboardingCompleted: true,
+      onboardingCompletedAt: now,
+      shopifyConnectionError: admin.firestore.FieldValue.delete(),
+      shopifyConnectionErrorAt: admin.firestore.FieldValue.delete()
+    }, { merge: true });
+
+    await db.collection("shopify_oauth_states").doc(state).set({
+      status: "completed",
+      completedAt: admin.firestore.Timestamp.now()
+    }, { merge: true });
+
+    console.info("Shopify OAuth connected", {
+      storeId,
+      userId,
+      shopDomain
+    });
+
+    return res.redirect(getShopifyDashboardRedirectUrl());
+  } catch (error) {
+    console.error("Shopify callback error:", {
+      storeId: storeId || String(stateRecord?.storeId || ""),
+      shopDomain: String(req.query?.shop || ""),
+      message: String(error?.message || "unknown_error")
+    });
+
+    if (storeId) {
+      await db.collection("stores").doc(storeId).set({
+        shopifyInstallStatus: "error",
+        shopifyConnectionError: String(error?.message || "Shopify OAuth callback failed").slice(0, 500),
+        shopifyConnectionErrorAt: admin.firestore.Timestamp.now()
+      }, { merge: true }).catch(() => {});
+    }
+
+    return res.status(500).send("Failed to complete Shopify connection");
   }
 });
 
@@ -923,7 +1503,7 @@ app.get("/onboarding/status", apiKeyGate, apiRateLimit, async (req, res) => {
     const plan = String(store.plan || "inactive");
     const trialDaysLeft = getTrialDaysLeftFromStore(store, new Date());
     const webhookActive = String(store.shopifyWebhookStatus || "") === "active";
-    const storeConnected = Boolean(String(store.shopDomain || "").trim());
+    const storeConnected = isShopifyConnectedStore(store) || Boolean(String(store.shopDomain || "").trim());
     const ordersSyncing = webhookActive || Boolean(store.lastOrderSyncedAt);
     const trialStarted = Boolean(store.trialStartAt) || plan === "trial";
 

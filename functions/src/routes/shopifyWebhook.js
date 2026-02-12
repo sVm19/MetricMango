@@ -11,23 +11,23 @@ function verifyShopifyHmac(req) {
   // Prefer Firebase Functions config; fall back to env for local development.
   const secret = getShopifyConfig().webhookSecret;
   if (!secret) {
-    // TODO: Consider failing startup if webhook secret is missing.
     throw new Error("Missing SHOPIFY_WEBHOOK_SECRET");
   }
 
-  const hmacHeader = req.get("x-shopify-hmac-sha256") || "";
+  const hmacHeader = String(req.get("x-shopify-hmac-sha256") || "").trim();
+  if (!hmacHeader) return false;
+
+  // Raw body is required for HMAC verification.
   const bodyBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
 
   const digest = crypto
     .createHmac("sha256", secret)
     .update(bodyBuffer)
-    .digest("base64");
+    .digest();
 
-  // TODO: Keep timing-safe comparison to avoid subtle signature leaks.
-  const hmacBuffer = Buffer.from(hmacHeader, "utf8");
-  const digestBuffer = Buffer.from(digest, "utf8");
-  if (hmacBuffer.length !== digestBuffer.length) return false;
-  return crypto.timingSafeEqual(hmacBuffer, digestBuffer);
+  const hmacBuffer = Buffer.from(hmacHeader, "base64");
+  if (hmacBuffer.length !== digest.length) return false;
+  return crypto.timingSafeEqual(hmacBuffer, digest);
 }
 
 function isNonEmptyString(value) {
@@ -66,6 +66,10 @@ router.post("/order-created", async (req, res) => {
     // TODO: Consider supporting per-store webhook secrets if multi-tenant needs grow.
     const isValid = verifyShopifyHmac(req);
     if (!isValid) {
+      console.warn("Shopify webhook rejected: invalid HMAC", {
+        path: req.path || "",
+        topic: req.get("x-shopify-topic") || ""
+      });
       return res.status(401).json({ error: "Invalid webhook signature" });
     }
 

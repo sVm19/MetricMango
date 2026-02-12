@@ -48,9 +48,12 @@ function getShopifyConfig() {
   return {
     webhookSecret: getSecret("shopify.webhook_secret", "SHOPIFY_WEBHOOK_SECRET"),
     appApiKey: getSecret("shopify.app_api_key", "SHOPIFY_APP_API_KEY"),
+    appApiSecret: getSecret("shopify.app_api_secret", "SHOPIFY_APP_API_SECRET"),
     appUrl: getSecret("shopify.app_url", "SHOPIFY_APP_URL"),
     redirectUri: getSecret("shopify.redirect_uri", "SHOPIFY_REDIRECT_URI"),
-    scopes: getSecret("shopify.scopes", "SHOPIFY_SCOPES") || "read_orders,read_products"
+    scopes: getSecret("shopify.scopes", "SHOPIFY_SCOPES") || "read_orders,read_products",
+    apiVersion: getSecret("shopify.api_version", "SHOPIFY_API_VERSION") || "2024-10",
+    tokenEncryptionKey: getSecret("shopify.token_encryption_key", "SHOPIFY_TOKEN_ENCRYPTION_KEY")
   };
 }
 

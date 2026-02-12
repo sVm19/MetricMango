@@ -1,6 +1,11 @@
 import { auth } from "./firebase.js";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || "";
+const DEFAULT_API_BASE = "https://us-central1-metricmango-9f621.cloudfunctions.net/api";
+const API_BASE = (
+  import.meta.env.VITE_API_BASE_URL
+  || import.meta.env.VITE_API_BASE
+  || DEFAULT_API_BASE
+).replace(/\/+$/, "");
 const trialExpiredListeners = new Set();
 const unauthorizedListeners = new Set();
 
@@ -121,10 +126,16 @@ export function completeOnboarding() {
   });
 }
 
-export function connectShopifyStore(shopUrl) {
-  return request("/onboarding/shopify/connect", {
+export function connectShopifyStore(storeName) {
+  return request("/shopify/connect", {
     method: "POST",
-    body: JSON.stringify({ shopUrl })
+    body: JSON.stringify({ storeName })
+  });
+}
+
+export function disconnectShopifyStore() {
+  return request("/shopify/disconnect", {
+    method: "POST"
   });
 }
 

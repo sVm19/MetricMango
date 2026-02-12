@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import Button from "../components/Button.jsx";
 import { getPricing } from "../api.js";
 
 const PLAN = {
@@ -85,9 +86,9 @@ export default function Pricing() {
             ))}
           </ul>
 
-          <button type="button" className="pricing-cta">
+          <Button type="button" variant="primary" fullWidth>
             {PLAN.cta}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

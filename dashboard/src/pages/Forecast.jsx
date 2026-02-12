@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import EmptyState from "../components/EmptyState.jsx";
 import { getForecast, getRestockSuggestions } from "../api.js";
 import { useAccess } from "../access/AccessContext.jsx";
 
@@ -56,10 +57,10 @@ export default function Forecast() {
         {!locked && !hasAnyData ? (
           <section className="card empty-state-card">
             <h2>No Data Yet</h2>
-            <p className="empty-state-title">We&apos;ll show insights once your first order arrives</p>
-            <p className="empty-state-body">
-              Create a test order in Shopify to generate forecast and restock recommendations.
-            </p>
+            <EmptyState
+              title="We'll show insights once your first order arrives"
+              description="Create a test order in Shopify to generate forecast and restock recommendations."
+            />
           </section>
         ) : null}
         <div className="page-header">
