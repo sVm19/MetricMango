@@ -264,7 +264,7 @@ function DashboardLayout() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <h1>Metric Mango</h1>
+          <img className="brand-logo" src="/logo.svg" alt="Metric Mango" />
           <p>Built for small ecommerce teams.</p>
         </div>
         <div className="topbar-right">

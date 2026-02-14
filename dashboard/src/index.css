@@ -374,6 +374,13 @@ button {
   gap: var(--space-1);
 }
 
+.brand-logo {
+  height: 44px;
+  width: auto;
+  max-width: min(240px, 70vw);
+  display: block;
+}
+
 .brand p {
   color: var(--color-text-muted);
   font-size: var(--fs-muted);
