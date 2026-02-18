@@ -35,7 +35,7 @@ export default function Pricing() {
         const data = await getPricing();
         if (!active) return;
         setPricing(data);
-      } catch (error) {
+      } catch {
         if (!active) return;
         setPricing(null);
       }

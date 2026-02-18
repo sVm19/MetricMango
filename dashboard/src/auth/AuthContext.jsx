@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
   browserLocalPersistence,
   createUserWithEmailAndPassword,
@@ -12,6 +12,11 @@ import { auth, isFirebaseConfigured } from "../firebase.js";
 import { bootstrapUserStore, completeOnboarding, completeSignup, onUnauthorized } from "../api.js";
 
 const AuthContext = createContext(null);
+const IS_DUMMY_MODE = ["1", "true", "yes", "on"].includes(
+  String(import.meta.env.VITE_USE_DUMMY_DATA || "").trim().toLowerCase()
+);
+const DUMMY_EMAIL = "demo@metricmango.local";
+const DUMMY_PASSWORD = "Demo@123456";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -20,18 +25,19 @@ export function AuthProvider({ children }) {
   const [mappingError, setMappingError] = useState("");
   const [sessionExpired, setSessionExpired] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [dummyLoggedIn, setDummyLoggedIn] = useState(false);
 
-  function detectCountryHint() {
+  const detectCountryHint = useCallback(() => {
     try {
       const locale = Intl.DateTimeFormat().resolvedOptions().locale || "";
       const parts = String(locale).split("-");
       return String(parts[parts.length - 1] || "").slice(0, 2).toUpperCase();
-    } catch (error) {
+    } catch {
       return "";
     }
-  }
+  }, []);
 
-  async function resolveServerStoreMapping(nextUser) {
+  const resolveServerStoreMapping = useCallback(async nextUser => {
     if (!nextUser) {
       setStoreContextReady(false);
       return;
@@ -47,9 +53,19 @@ export function AuthProvider({ children }) {
     setMappingError("");
     setSessionExpired(false);
     setStoreContextReady(true);
-  }
+  }, [detectCountryHint]);
 
   useEffect(() => {
+    if (IS_DUMMY_MODE) {
+      setLoading(false);
+      setStoreContextReady(dummyLoggedIn);
+      setOnboardingRequired(false);
+      setMappingError("");
+      setSessionExpired(false);
+      setUser(dummyLoggedIn ? { uid: "demo-user", email: DUMMY_EMAIL } : null);
+      return undefined;
+    }
+
     if (!isFirebaseConfigured || !auth) {
       setLoading(false);
       return undefined;
@@ -61,7 +77,7 @@ export function AuthProvider({ children }) {
     async function initAuth() {
       try {
         await setPersistence(auth, browserLocalPersistence);
-      } catch (error) {
+      } catch {
         // Keep going with Firebase defaults if persistence setup fails.
       }
 
@@ -73,7 +89,7 @@ export function AuthProvider({ children }) {
 
         try {
           await resolveServerStoreMapping(nextUser);
-        } catch (error) {
+        } catch {
           setStoreContextReady(false);
           setOnboardingRequired(false);
           setMappingError("Unable to connect this account to a store.");
@@ -89,17 +105,38 @@ export function AuthProvider({ children }) {
       isActive = false;
       unsubscribe();
     };
-  }, []);
+  }, [dummyLoggedIn, resolveServerStoreMapping]);
 
-  async function signIn(email, password) {
+  const signIn = useCallback(async (email, password) => {
+    if (IS_DUMMY_MODE) {
+      const normalizedEmail = String(email || "").trim().toLowerCase();
+      const normalizedPassword = String(password || "");
+      if (normalizedEmail !== DUMMY_EMAIL || normalizedPassword !== DUMMY_PASSWORD) {
+        const invalidError = new Error("Invalid email or password.");
+        invalidError.code = "auth/invalid-credential";
+        throw invalidError;
+      }
+      setDummyLoggedIn(true);
+      setSessionExpired(false);
+      setStoreContextReady(true);
+      setOnboardingRequired(false);
+      setMappingError("");
+      setUser({ uid: "demo-user", email: DUMMY_EMAIL });
+      return { user: { uid: "demo-user", email: DUMMY_EMAIL } };
+    }
+
     if (!auth) throw new Error("Firebase auth is not configured.");
     setSessionExpired(false);
     const credential = await signInWithEmailAndPassword(auth, email, password);
     await resolveServerStoreMapping(credential.user);
     return credential;
-  }
+  }, [resolveServerStoreMapping]);
 
-  async function signUp(email, password) {
+  const signUp = useCallback(async (email, password) => {
+    if (IS_DUMMY_MODE) {
+      return signIn(email, password);
+    }
+
     if (!auth) throw new Error("Firebase auth is not configured.");
     setSessionExpired(false);
     const credential = await createUserWithEmailAndPassword(auth, email, password);
@@ -108,15 +145,25 @@ export function AuthProvider({ children }) {
       await completeSignup(idToken);
       await resolveServerStoreMapping(credential.user);
       return credential;
-    } catch (error) {
+    } catch {
       await signOut(auth);
       const signupFinalizeError = new Error("Unable to finish account setup right now. Please try again.");
       signupFinalizeError.code = "app/signup-initialization-failed";
       throw signupFinalizeError;
     }
-  }
+  }, [resolveServerStoreMapping, signIn]);
 
-  async function logout() {
+  const logout = useCallback(async () => {
+    if (IS_DUMMY_MODE) {
+      setDummyLoggedIn(false);
+      setSessionExpired(false);
+      setUser(null);
+      setStoreContextReady(false);
+      setOnboardingRequired(false);
+      setMappingError("");
+      return;
+    }
+
     if (!auth) return;
     setUser(null);
     setStoreContextReady(false);
@@ -125,7 +172,7 @@ export function AuthProvider({ children }) {
     // Legacy cleanup from old client-side mapping implementation.
     localStorage.removeItem("metric-mango.user-store-map");
     await signOut(auth);
-  }
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onUnauthorized(() => {
@@ -136,17 +183,21 @@ export function AuthProvider({ children }) {
       });
     });
     return unsubscribe;
-  }, []);
+  }, [logout]);
 
-  async function requestPasswordReset(email) {
+  const requestPasswordReset = useCallback(async email => {
+    if (IS_DUMMY_MODE) {
+      return Promise.resolve(email);
+    }
+
     if (!auth) throw new Error("Firebase auth is not configured.");
     return sendPasswordResetEmail(auth, email);
-  }
+  }, []);
 
-  async function finishOnboarding() {
+  const finishOnboarding = useCallback(async () => {
     await completeOnboarding();
     setOnboardingRequired(false);
-  }
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -156,19 +207,32 @@ export function AuthProvider({ children }) {
       mappingError,
       sessionExpired,
       loading,
-      isFirebaseConfigured,
+      isFirebaseConfigured: IS_DUMMY_MODE ? true : isFirebaseConfigured,
       signIn,
       signUp,
       requestPasswordReset,
       finishOnboarding,
       logout
     }),
-    [loading, mappingError, onboardingRequired, sessionExpired, storeContextReady, user]
+    [
+      finishOnboarding,
+      loading,
+      logout,
+      mappingError,
+      onboardingRequired,
+      requestPasswordReset,
+      sessionExpired,
+      signIn,
+      signUp,
+      storeContextReady,
+      user
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {

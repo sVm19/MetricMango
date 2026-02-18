@@ -27,7 +27,7 @@ export default function Forecast() {
         if (!active) return;
         setForecast(forecastData.data || []);
         setRestock(restockData.suggestions || []);
-      } catch (error) {
+      } catch {
         if (!active) return;
         setError("Failed to load forecast");
       } finally {

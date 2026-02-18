@@ -27,7 +27,7 @@ export default function Products() {
         const data = await getProducts();
         if (!active) return;
         setRows(data.products || []);
-      } catch (requestError) {
+      } catch {
         if (!active) return;
         setError("Failed to load products");
       } finally {
@@ -50,7 +50,7 @@ export default function Products() {
       } else {
         await exportProductsCsv();
       }
-    } catch (requestError) {
+    } catch {
       setExportError("Unable to export CSV right now.");
     } finally {
       setExporting("");

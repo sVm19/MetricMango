@@ -9,6 +9,28 @@ import { useAuth } from "./auth/AuthContext.jsx";
 import { useAccess } from "./access/AccessContext.jsx";
 import { connectShopifyStore, disconnectShopifyStore, getOnboardingStatus } from "./api.js";
 
+const THEME_MODE_KEY = "metric-mango.theme-mode";
+const THEME_MODE_SEQUENCE = ["system", "light", "dark"];
+
+function getInitialThemeMode() {
+  if (typeof window === "undefined") return "system";
+  const storedMode = String(window.localStorage.getItem(THEME_MODE_KEY) || "").toLowerCase();
+  if (THEME_MODE_SEQUENCE.includes(storedMode)) return storedMode;
+  return "system";
+}
+
+function resolveThemeMode(mode) {
+  if (mode === "light" || mode === "dark") return mode;
+  if (typeof window === "undefined") return "dark";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function nextThemeMode(currentMode) {
+  const currentIndex = THEME_MODE_SEQUENCE.indexOf(currentMode);
+  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % THEME_MODE_SEQUENCE.length;
+  return THEME_MODE_SEQUENCE[nextIndex];
+}
+
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
@@ -76,42 +98,70 @@ function LandingPage() {
       <main className="lp-container">
         <section className="lp-hero">
           <div className="lp-pill">Metric Mango for Shopify</div>
-          <h1>Predict Sales. Prevent Stockouts.</h1>
-          <p>Simple sales analytics for Shopify stores.</p>
+          <h1>Stop Stockouts Before They Cost You Sales.</h1>
+          <p>Get clear restock actions, demand forecasts, and weekly priority lists your team can execute fast.</p>
+          <div className="lp-proof-strip" role="status" aria-label="Product proof points">
+            <span>Setup in under 2 minutes</span>
+            <span>One plan. All features.</span>
+            <span>Built for Shopify teams</span>
+          </div>
           <div className="lp-actions">
             <Button as={Link} to="/signup" variant="primary">Start Free 7-Day Trial</Button>
-            <Button as={Link} to="/signin" variant="secondary">Connect Your Store</Button>
+            <Button as={Link} to="/signin" variant="secondary">Sign In / Sign Up</Button>
           </div>
         </section>
 
         <section className="lp-section">
-          <h2>Problem</h2>
-          <p>
-            Most store owners discover demand shifts too late. Inventory runs out, ad spend gets wasted, and revenue drops before teams can react.
-          </p>
+          <h2>What You Get in Week 1</h2>
+          <div className="lp-outcomes">
+            <article className="lp-outcome-card">
+              <div className="lp-outcome-value">Top 5 SKUs</div>
+              <p>Instant list of products likely to stock out first.</p>
+            </article>
+            <article className="lp-outcome-card">
+              <div className="lp-outcome-value">7/14/30-Day</div>
+              <p>Demand signals that help you restock with confidence.</p>
+            </article>
+            <article className="lp-outcome-card">
+              <div className="lp-outcome-value">Weekly Action Report</div>
+              <p>Clear recommendations sent to your team to prevent misses.</p>
+            </article>
+          </div>
         </section>
 
         <section className="lp-section">
-          <h2>Solution</h2>
-          <p>
-            Metric Mango gives a clear daily command center for sales, demand forecasts, and restock signals so you can move before stockouts hit.
-          </p>
+          <h2>Why Teams Choose Metric Mango</h2>
+          <p>Instead of giving you only charts, Metric Mango tells you what to restock now, what can wait, and where revenue is at risk.</p>
         </section>
 
         <section className="lp-section">
           <h2>Features</h2>
           <div className="lp-features">
             <article className="lp-feature-card">
-              <h3>Forecasting</h3>
-              <p>See demand trends across 7, 14, and 30 days with actionable projections.</p>
+              <h3>Demand Forecasts</h3>
+              <p>See trend shifts across 7, 14, and 30 days before inventory runs out.</p>
             </article>
             <article className="lp-feature-card">
-              <h3>Restock Alerts</h3>
-              <p>Know exactly which products need attention before they become a lost-sale risk.</p>
+              <h3>Restock Priorities</h3>
+              <p>Know exactly which products need action today and which are safe to delay.</p>
             </article>
             <article className="lp-feature-card">
-              <h3>Store Analytics</h3>
-              <p>Track revenue and order movement in one focused dashboard your team can trust.</p>
+              <h3>Weekly Team Reports</h3>
+              <p>Share one simple action list with operations and buying teams every week.</p>
+            </article>
+          </div>
+        </section>
+
+        <section className="lp-section">
+          <h2>Merchant Feedback</h2>
+          <div className="lp-testimonials">
+            <article className="lp-testimonial-card">
+              <p>"We finally know what to reorder first. No more guessing at midnight."</p>
+              <span>Operations Lead, Apparel Brand</span>
+            </article>
+            <article className="lp-testimonial-card">
+              <p>"The weekly action list is better than 10 different reports."</p>
+              <span>Founder, D2C Accessories Store</span>
             </article>
           </div>
         </section>
@@ -120,14 +170,15 @@ function LandingPage() {
           <h2>Pricing</h2>
           <p>One plan. All features. No tiers.</p>
           <div className="lp-price">₹499 / $9<span> per month</span></div>
+          <p className="lp-roi-note">If Metric Mango prevents one stockout, it usually pays for itself.</p>
         </section>
 
         <section className="lp-section lp-final-cta">
-          <h2>Ready to run a smarter store?</h2>
-          <p>Launch in minutes and get the clarity your team needs to scale inventory decisions.</p>
+          <h2>Ready to prevent your next stockout?</h2>
+          <p>Start free, connect your store, and get your first priority list in minutes.</p>
           <div className="lp-actions">
             <Button as={Link} to="/signup" variant="primary">Start Free 7-Day Trial</Button>
-            <Button as={Link} to="/signin" variant="secondary">Connect Your Store</Button>
+            <Button as="a" href="mailto:sales@metricmango.com" variant="secondary">Talk to Sales</Button>
           </div>
         </section>
       </main>
@@ -238,7 +289,7 @@ function AuthPage({ mode }) {
   );
 }
 
-function DashboardLayout() {
+function DashboardLayout({ themeMode, onToggleTheme }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, sessionExpired, isFirebaseConfigured, onboardingRequired } = useAuth();
@@ -264,8 +315,10 @@ function DashboardLayout() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <img className="brand-logo" src="/logo.svg" alt="Metric Mango" />
-          <p>Built for small ecommerce teams.</p>
+          <div className="brand-badge">
+            <img className="brand-logo" src="/logo.svg" alt="Metric Mango" />
+          </div>
+          <p>Predict demand. Prevent stockouts. Grow profit.</p>
         </div>
         <div className="topbar-right">
           <nav className="nav">
@@ -277,6 +330,9 @@ function DashboardLayout() {
           <div className="session-meta">
             <span className="session-email">{user?.email || "Signed in"}</span>
             {accessState.trialExpired || locked ? <span className="lock-pill">Locked</span> : null}
+            <button type="button" className="theme-toggle-btn" onClick={onToggleTheme} title="Toggle theme mode">
+              {themeMode === "system" ? "System" : themeMode === "light" ? "Light" : "Dark"}
+            </button>
             <Button type="button" variant="secondary" onClick={handleLogout}>Logout</Button>
           </div>
         </div>
@@ -436,6 +492,25 @@ function OnboardingPage() {
 export default function App() {
   const location = useLocation();
   const forgotMode = new URLSearchParams(location.search).get("forgot") === "1";
+  const [themeMode, setThemeMode] = useState(getInitialThemeMode);
+
+  React.useEffect(() => {
+    const root = document.documentElement;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+
+    const applyTheme = () => {
+      const resolved = resolveThemeMode(themeMode);
+      root.setAttribute("data-theme", resolved);
+    };
+
+    applyTheme();
+    window.localStorage.setItem(THEME_MODE_KEY, themeMode);
+
+    if (themeMode !== "system") return undefined;
+    const handleChange = () => applyTheme();
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, [themeMode]);
 
   return (
     <Routes>
@@ -447,7 +522,7 @@ export default function App() {
         path="/dashboard"
         element={
           <ProtectedRoute>
-            <DashboardLayout />
+            <DashboardLayout themeMode={themeMode} onToggleTheme={() => setThemeMode(current => nextThemeMode(current))} />
           </ProtectedRoute>
         }
       >

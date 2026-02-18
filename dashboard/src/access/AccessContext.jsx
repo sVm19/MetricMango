@@ -106,6 +106,7 @@ export function AccessProvider({ children }) {
   return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAccess() {
   const context = useContext(AccessContext);
   if (!context) {
