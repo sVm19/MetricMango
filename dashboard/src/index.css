@@ -1653,3 +1653,854 @@ button {
     transform: rotate(360deg);
   }
 }
+
+/* Premium minimal SaaS refresh (visual-only) */
+:root,
+[data-theme="light"],
+[data-theme="dark"] {
+  --color-bg: #fafaf7;
+  --color-surface: #ffffff;
+  --color-surface-2: #ffffff;
+  --color-border: #eaeaea;
+  --color-border-strong: #dfdfdf;
+  --color-accent: #facc15;
+  --color-accent-strong: #f3d25a;
+  --color-text: #212529;
+  --color-text-muted: #6b7280;
+  --shadow-card: 0 2px 8px rgba(17, 24, 39, 0.04);
+  --shadow-elevated: 0 8px 18px rgba(17, 24, 39, 0.08);
+  --shadow-glow: 0 0 0 transparent;
+  --shadow-glow-soft: 0 0 0 transparent;
+  --shadow-glow-hover: 0 0 0 transparent;
+  --radius: 12px;
+}
+
+body {
+  font-family: "Inter", "Manrope", "Segoe UI", Arial, sans-serif;
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+h1,
+h2,
+h3 {
+  font-family: "Manrope", "Inter", "Segoe UI", Arial, sans-serif;
+  color: #1f2937;
+}
+
+.page-subtitle,
+.auth-subtitle,
+.empty,
+.chart-caption,
+.pricing-notes,
+.auth-link,
+.empty-state-body,
+.stat-helper,
+.brand p,
+.pricing-subtitle,
+.price-description,
+.trial-note {
+  color: var(--color-text-muted);
+}
+
+.section-divider {
+  height: 1px;
+  background: #ecece8;
+}
+
+.card,
+.stat-card,
+.auth-card,
+.landing-hero,
+.lp-section,
+.chart-card,
+.pricing-card,
+.pricing-page,
+.onboarding-note,
+.empty-state,
+.table-wrap,
+.chart-bars,
+.chart-stat-pill,
+.momentum-compare-item,
+.momentum-quality > div,
+.momentum-sparkline,
+.lp-feature-card,
+.lp-outcome-card,
+.lp-testimonial-card,
+.summary-meta-item,
+.locked-overlay-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.card,
+.auth-card,
+.landing-hero,
+.lp-section,
+.pricing-card,
+.pricing-page,
+.chart-card,
+.stat-card {
+  padding: calc(var(--space-3) + 2px);
+}
+
+.card:hover,
+.stat-card:hover,
+.chart-card:hover,
+.pricing-card:hover,
+.auth-card:hover,
+.landing-hero:hover,
+.lp-section:hover,
+.onboarding-note:hover,
+.empty-state:hover,
+.lp-feature-card:hover,
+.momentum-clickable:hover {
+  transform: none;
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-elevated);
+}
+
+.topbar {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.88);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.06);
+}
+
+.brand-badge {
+  border: 1px solid var(--color-border);
+  background: #ffffff;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+.brand-badge:hover {
+  background: #ffffff;
+  border-color: var(--color-border-strong);
+  box-shadow: none;
+  transform: none;
+}
+
+.brand-logo {
+  filter: none;
+}
+
+.nav a {
+  border: 1px solid var(--color-border);
+  color: #374151;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.nav a:hover {
+  background: #fffdf2;
+  border-color: #f1e2a3;
+  color: #1f2937;
+  box-shadow: none;
+  transform: none;
+}
+
+.nav a.active {
+  background: #fff6cf;
+  border-color: #efd67a;
+  color: #5b4300;
+}
+
+.btn {
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.btn:hover {
+  transform: none;
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  border-color: #efc316;
+  color: #4b3700;
+}
+
+.btn-primary:hover {
+  background: #f4cf3d;
+  border-color: #e0b50f;
+  box-shadow: none;
+}
+
+.btn-secondary {
+  background: #ffffff;
+  border-color: var(--color-border);
+  color: #374151;
+}
+
+.btn-secondary:hover {
+  background: #f8f9fb;
+  border-color: var(--color-border-strong);
+  box-shadow: none;
+}
+
+.theme-toggle-btn {
+  border: 1px solid var(--color-border);
+  background: #ffffff;
+  color: #374151;
+}
+
+.theme-toggle-btn:hover {
+  border-color: var(--color-border-strong);
+  background: #f8f9fb;
+  box-shadow: none;
+  transform: none;
+}
+
+.session-email {
+  color: #4b5563;
+}
+
+.trial-banner {
+  border: 1px solid #f3dfa1;
+  color: #5b4300;
+  background: #fff8df;
+}
+
+.upgrade-banner {
+  border: 1px solid #f4d3d3;
+  background: #fff5f5;
+  color: #9f3030;
+}
+
+.stat-label,
+.table-wrap th,
+.chart-stat-pill span,
+.plan-eyebrow {
+  color: #8a909b;
+}
+
+.stat-value,
+.momentum-value,
+.price,
+.pricing-amount,
+.summary-price-value {
+  color: #1f2937;
+  font-weight: 800;
+}
+
+.summary-badge {
+  border: 1px solid #f1e2a3;
+  background: #fff9e2;
+  color: #725300;
+}
+
+.summary-badge-positive {
+  border-color: #d2e7d8;
+  background: #eef8f1;
+  color: #227a40;
+}
+
+.summary-badge-negative {
+  border-color: #f2d0d0;
+  background: #fff1f1;
+  color: #a53b3b;
+}
+
+.impact-low {
+  border-color: #d8e9de;
+  background: #f5fbf7;
+}
+
+.impact-medium {
+  border-color: #efe2b8;
+  background: #fffbef;
+}
+
+.impact-high {
+  border-color: #f2d4d4;
+  background: #fff5f5;
+}
+
+.momentum-stack {
+  border: 1px dashed #dddddd;
+}
+
+.momentum-status {
+  border-color: #e6e6e6;
+}
+
+.momentum-status-growing {
+  color: #227a40;
+  border-color: #d2e7d8;
+  background: #eef8f1;
+}
+
+.momentum-status-stable {
+  color: #8c6a00;
+  border-color: #efe2b8;
+  background: #fffbef;
+}
+
+.momentum-status-slowing {
+  color: #a53b3b;
+  border-color: #f2d0d0;
+  background: #fff1f1;
+}
+
+.momentum-filter-btn {
+  border: 1px solid var(--color-border);
+  background: #ffffff;
+  color: #6b7280;
+}
+
+.momentum-filter-btn.active {
+  color: #5b4300;
+  background: #fff6cf;
+  border-color: #efd67a;
+}
+
+.momentum-delta.positive {
+  color: #227a40;
+}
+
+.momentum-delta.negative {
+  color: #a53b3b;
+}
+
+.chart-bars,
+.momentum-sparkline {
+  background-color: #ffffff;
+  background-image: repeating-linear-gradient(
+    to top,
+    #f1f1ee 0,
+    #f1f1ee 1px,
+    transparent 1px,
+    transparent 28px
+  );
+}
+
+.chart-bar,
+.momentum-sparkline-bar {
+  background: #f6dc85;
+  border-radius: 8px;
+}
+
+.chart-bar:last-child,
+.momentum-sparkline-bar:last-child {
+  background: #facc15;
+}
+
+.table-wrap,
+.chart-bars,
+.momentum-sparkline,
+.summary-meta-item,
+.chart-stat-pill,
+.momentum-compare-item,
+.momentum-quality > div,
+.lp-feature-card,
+.lp-outcome-card,
+.lp-testimonial-card,
+.onboarding-note,
+.empty-state {
+  background-color: #ffffff;
+}
+
+.table-wrap th,
+.table-wrap td {
+  border-bottom-color: #efefef;
+}
+
+.metric {
+  color: #9a7800;
+}
+
+.low-stock td {
+  background: #fff4f4;
+}
+
+.warn td {
+  background: #fffaf0;
+}
+
+.status-alert {
+  color: #a53b3b;
+  border-color: #f2d0d0;
+  background: #fff1f1;
+}
+
+.status-safe {
+  color: #227a40;
+  border-color: #d2e7d8;
+  background: #eef8f1;
+}
+
+.hero-pill,
+.lp-pill,
+.lp-proof-strip span {
+  border-color: #f1e2a3;
+  background: #fff9e2;
+  color: #7a5b00;
+}
+
+.lp-shell {
+  background: #fafaf7;
+}
+
+.lp-glow {
+  opacity: 0.3;
+}
+
+.lp-outcome-value,
+.lp-price,
+.lp-roi-note {
+  color: #7a5b00;
+}
+
+.auth-form input {
+  border: 1px solid var(--color-border);
+  background: #ffffff;
+  color: var(--color-text);
+}
+
+.auth-form input:focus {
+  border-color: #efc316;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.18);
+}
+
+.auth-error {
+  color: #b34040;
+}
+
+.auth-success {
+  color: #2d8a4a;
+}
+
+.lock-pill {
+  border: 1px solid #f4d3d3;
+  background: #fff5f5;
+  color: #b24b4b;
+}
+
+.empty-icon {
+  border: 1px solid #f1e2a3;
+  background: #fff9e2;
+}
+
+.empty-icon span {
+  background: #e0b50f;
+}
+
+.feature-locked-blur {
+  opacity: 0.78;
+}
+
+.locked-content {
+  opacity: 0.72;
+}
+
+.locked-overlay {
+  background: rgba(250, 250, 247, 0.72);
+}
+
+.locked-overlay-title {
+  color: #7a5b00;
+}
+
+/* Ensure legacy light-theme selectors are fully overridden by the refresh */
+[data-theme="light"] .btn-secondary,
+[data-theme="light"] .nav a {
+  background: #ffffff;
+  color: #374151;
+  border-color: var(--color-border);
+}
+
+[data-theme="light"] .btn-secondary:hover,
+[data-theme="light"] .nav a:hover {
+  background: #f8f9fb;
+  border-color: var(--color-border-strong);
+  color: #1f2937;
+}
+
+[data-theme="light"] .nav a.active {
+  background: #fff6cf;
+  border-color: #efd67a;
+  color: #5b4300;
+}
+
+[data-theme="light"] .summary-badge {
+  color: #725300;
+  background: #fff9e2;
+  border-color: #f1e2a3;
+}
+
+[data-theme="light"] .theme-toggle-btn {
+  background: #ffffff;
+}
+
+[data-theme="light"] .session-email {
+  color: #4b5563;
+}
+
+[data-theme="light"] .stat-label,
+[data-theme="light"] .page-subtitle,
+[data-theme="light"] .auth-subtitle,
+[data-theme="light"] .chart-caption,
+[data-theme="light"] .pricing-notes,
+[data-theme="light"] .auth-link,
+[data-theme="light"] .empty-state-body,
+[data-theme="light"] .stat-helper,
+[data-theme="light"] .brand p {
+  color: var(--color-text-muted);
+}
+
+[data-theme="light"] .summary-meta-item,
+[data-theme="light"] .chart-stat-pill,
+[data-theme="light"] .momentum-compare-item,
+[data-theme="light"] .momentum-quality > div,
+[data-theme="light"] .lp-feature-card,
+[data-theme="light"] .lp-outcome-card,
+[data-theme="light"] .lp-testimonial-card,
+[data-theme="light"] .onboarding-note,
+[data-theme="light"] .empty-state,
+[data-theme="light"] .table-wrap,
+[data-theme="light"] .chart-bars,
+[data-theme="light"] .momentum-sparkline {
+  background: #ffffff;
+  border-color: var(--color-border);
+}
+
+[data-theme="light"] .table-wrap th,
+[data-theme="light"] .table-wrap td {
+  border-bottom-color: #efefef;
+}
+
+[data-theme="light"] .momentum-stack,
+[data-theme="light"] .section-divider {
+  border-color: #dddddd;
+}
+
+[data-theme="light"] .momentum-filter-btn {
+  background: #ffffff;
+  border-color: var(--color-border);
+  color: #6b7280;
+}
+
+[data-theme="light"] .momentum-filter-btn.active {
+  color: #5b4300;
+  background: #fff6cf;
+  border-color: #efd67a;
+}
+
+/* Product Hunt thumbnail contrast tuning */
+.topbar {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: #e5e5e5;
+}
+
+.page-header h2,
+.dashboard-section h2,
+.chart-card h3,
+.pricing-page h2,
+.pricing-page h3 {
+  color: #111827;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.page-subtitle,
+.chart-caption,
+.stat-helper,
+.pricing-notes,
+.empty-state-body {
+  color: #667085;
+}
+
+.stat-label,
+.table-wrap th,
+.chart-stat-pill span,
+.plan-eyebrow {
+  color: #7b818b;
+  font-weight: 700;
+}
+
+.stat-value,
+.momentum-value,
+.price,
+.pricing-amount,
+.summary-price-value {
+  color: #111827;
+  font-size: clamp(32px, 4.3vw, 46px);
+  letter-spacing: -0.02em;
+}
+
+.summary-meta-item strong,
+.chart-stat-pill strong,
+.momentum-compare-item strong,
+.momentum-quality strong {
+  color: #111827;
+  font-weight: 700;
+}
+
+.summary-badge {
+  background: #fff7d6;
+  border-color: #ead178;
+  color: #654b00;
+}
+
+.nav a.active,
+.momentum-filter-btn.active {
+  background: #fde68a;
+  border-color: #e2bb1a;
+  color: #5a4300;
+}
+
+.chart-bars,
+.momentum-sparkline {
+  background-image: repeating-linear-gradient(
+    to top,
+    #ecece8 0,
+    #ecece8 1px,
+    transparent 1px,
+    transparent 26px
+  );
+}
+
+.chart-bar {
+  background: #f3da82;
+}
+
+.chart-bar:last-child {
+  background: #facc15;
+}
+
+.table-wrap th,
+.table-wrap td {
+  color: #273244;
+}
+
+/* Subtle glassmorphism layer (kept crisp for readability) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(600px 300px at 8% 2%, rgba(250, 204, 21, 0.07), transparent 70%),
+    radial-gradient(520px 260px at 92% 10%, rgba(255, 255, 255, 0.9), transparent 72%);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .topbar {
+    background: rgba(255, 255, 255, 0.82);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+    backdrop-filter: blur(10px) saturate(120%);
+    border-color: rgba(226, 226, 226, 0.92);
+    box-shadow: 0 10px 24px rgba(17, 24, 39, 0.08);
+  }
+
+  .card,
+  .stat-card,
+  .chart-card,
+  .pricing-card,
+  .pricing-page,
+  .summary-meta-item,
+  .chart-stat-pill,
+  .momentum-compare-item,
+  .momentum-quality > div,
+  .table-wrap,
+  .empty-state,
+  .onboarding-note {
+    background: rgba(255, 255, 255, 0.86);
+    -webkit-backdrop-filter: blur(8px) saturate(112%);
+    backdrop-filter: blur(8px) saturate(112%);
+    border-color: rgba(231, 231, 231, 0.95);
+  }
+}
+
+/* Center final CTA buttons in the Product Hunt hero footer block */
+.lp-final-cta .lp-actions {
+  justify-content: center;
+}
+
+/* Center hero CTA buttons (Start Free 7-Day Trial / Sign In / Sign Up) */
+.lp-hero .lp-actions {
+  justify-content: center;
+}
+
+/* Center landing pricing copy block */
+.lp-pricing {
+  align-items: center;
+  text-align: center;
+}
+
+/* Center-align headings inside cards */
+.card h1,
+.card h2,
+.card h3,
+.stat-card h1,
+.stat-card h2,
+.stat-card h3,
+.chart-card h1,
+.chart-card h2,
+.chart-card h3,
+.pricing-card h1,
+.pricing-card h2,
+.pricing-card h3,
+.pricing-page h1,
+.pricing-page h2,
+.pricing-page h3,
+.auth-card h1,
+.auth-card h2,
+.auth-card h3,
+.landing-hero h1,
+.landing-hero h2,
+.landing-hero h3,
+.lp-section h1,
+.lp-section h2,
+.lp-section h3,
+.lp-feature-card h1,
+.lp-feature-card h2,
+.lp-feature-card h3,
+.lp-outcome-card h1,
+.lp-outcome-card h2,
+.lp-outcome-card h3,
+.lp-testimonial-card h1,
+.lp-testimonial-card h2,
+.lp-testimonial-card h3 {
+  text-align: center;
+}
+
+/* Graphics refinement: charts + data panels */
+.chart-card,
+.dashboard-performance .chart-card,
+.momentum-stack {
+  position: relative;
+  overflow: hidden;
+}
+
+.chart-card::before,
+.momentum-stack::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(320px 120px at 88% -10%, rgba(250, 204, 21, 0.12), transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.56) 0%, rgba(255, 255, 255, 0) 34%);
+}
+
+.chart-toolbar,
+.momentum-toolbar {
+  position: relative;
+  z-index: 1;
+}
+
+.chart-bars,
+.momentum-sparkline {
+  position: relative;
+  overflow: hidden;
+  border-color: #e5e7eb;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  background-color: #fcfcfb;
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.1)),
+    repeating-linear-gradient(to top, #ecece8 0, #ecece8 1px, transparent 1px, transparent 24px);
+}
+
+.chart-bars::after,
+.momentum-sparkline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 36%;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0));
+}
+
+.chart-bar {
+  position: relative;
+  background: linear-gradient(180deg, #fde68a 0%, #facc15 100%);
+  border: 1px solid rgba(242, 191, 9, 0.62);
+  box-shadow: 0 8px 14px rgba(250, 204, 21, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.56);
+  transform-origin: bottom;
+  animation: chartBarIn 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.chart-bar::before {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  top: 3px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+}
+
+.chart-bar:last-child {
+  background: linear-gradient(180deg, #fcd34d 0%, #f5bf0e 100%);
+  border-color: #e2bb1a;
+  box-shadow: 0 10px 16px rgba(250, 204, 21, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.momentum-sparkline-bar {
+  position: relative;
+  background: linear-gradient(180deg, #d8dee8 0%, #b8c2d1 100%);
+  border: 1px solid #c8d0dc;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transform-origin: bottom;
+  animation: chartBarIn 540ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.momentum-sparkline-bar:nth-last-child(-n + 2) {
+  background: linear-gradient(180deg, #fcd34d 0%, #f5bf0e 100%);
+  border-color: #e2bb1a;
+}
+
+.chart-stat-pill,
+.summary-meta-item,
+.momentum-compare-item,
+.momentum-quality > div {
+  border-color: #e6e8ec;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.66);
+}
+
+.chart-stat-pill {
+  position: relative;
+  overflow: hidden;
+}
+
+.chart-stat-pill::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(250, 204, 21, 0.68), rgba(250, 204, 21, 0));
+}
+
+.momentum-value {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.66);
+}
+
+@keyframes chartBarIn {
+  from {
+    opacity: 0;
+    transform: scaleY(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+/* Center pricing card CTA button */
+.pricing-grid.single .pricing-card .btn.btn-block {
+  align-self: center;
+  width: min(280px, 100%);
+}
