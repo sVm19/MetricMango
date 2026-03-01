@@ -2504,3 +2504,163 @@ body::before {
   align-self: center;
   width: min(280px, 100%);
 }
+
+/* Soft minimal depth refresh (cards + warm glass background, no full neomorphism) */
+:root,
+[data-theme="light"],
+[data-theme="dark"] {
+  --color-bg: #f7f3eb;
+  --color-surface: #fffdf8;
+  --color-surface-2: #fffaf2;
+  --color-border: #e8e0d3;
+  --color-border-strong: #d9cdbb;
+  --color-text: #17212e;
+  --color-text-muted: #606a78;
+  --shadow-card: 0 4px 14px rgba(17, 24, 39, 0.06);
+  --shadow-elevated: 0 10px 24px rgba(17, 24, 39, 0.1);
+  --radius: 10px;
+}
+
+body {
+  color: var(--color-text);
+  background:
+    radial-gradient(1200px 640px at 8% -10%, rgba(246, 211, 130, 0.22), transparent 58%),
+    radial-gradient(920px 560px at 92% 4%, rgba(255, 255, 255, 0.78), transparent 64%),
+    var(--color-bg);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(380px 220px at 12% 16%, rgba(252, 216, 138, 0.26), transparent 72%),
+    radial-gradient(320px 200px at 86% 26%, rgba(255, 248, 230, 0.85), transparent 76%);
+  filter: blur(14px);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: rgba(255, 251, 244, 0.36);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.topbar {
+  background: rgba(255, 252, 246, 0.74);
+  border: 1px solid rgba(226, 216, 201, 0.96);
+  -webkit-backdrop-filter: blur(10px) saturate(112%);
+  backdrop-filter: blur(10px) saturate(112%);
+  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.07);
+}
+
+.card,
+.stat-card,
+.auth-card,
+.landing-hero,
+.lp-section,
+.chart-card,
+.pricing-card,
+.pricing-page,
+.onboarding-note,
+.empty-state,
+.table-wrap,
+.chart-bars,
+.chart-stat-pill,
+.momentum-compare-item,
+.momentum-quality > div,
+.momentum-sparkline,
+.lp-feature-card,
+.lp-outcome-card,
+.lp-testimonial-card,
+.summary-meta-item,
+.locked-overlay-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.card:hover,
+.stat-card:hover,
+.chart-card:hover,
+.pricing-card:hover,
+.auth-card:hover,
+.landing-hero:hover,
+.lp-section:hover,
+.onboarding-note:hover,
+.empty-state:hover,
+.lp-feature-card:hover,
+.momentum-clickable:hover {
+  transform: translateY(-1px);
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-elevated);
+}
+
+/* Keep KPI/table/chart surfaces high-contrast and crisp */
+.stat-value,
+.momentum-value,
+.price,
+.pricing-amount,
+.summary-price-value,
+.chart-stat-pill strong,
+.summary-meta-item strong,
+.momentum-compare-item strong,
+.momentum-quality strong {
+  color: #111827;
+}
+
+.table-wrap,
+.chart-bars,
+.momentum-sparkline {
+  background: #fffefb;
+  border-color: #e6dece;
+  box-shadow: none;
+}
+
+.table-wrap th,
+.table-wrap td {
+  color: #223041;
+  border-bottom-color: #ebe4d8;
+}
+
+.chart-card::before,
+.momentum-stack::before,
+.chart-bars::after,
+.chart-bar::before {
+  content: none;
+}
+
+.chart-bars,
+.momentum-sparkline {
+  background-image: repeating-linear-gradient(
+    to top,
+    #ece6da 0,
+    #ece6da 1px,
+    transparent 1px,
+    transparent 24px
+  );
+}
+
+.chart-bar,
+.momentum-sparkline-bar {
+  background: #f3cf74;
+  border: 0;
+  box-shadow: none;
+  border-radius: 8px;
+}
+
+.chart-bar:last-child,
+.momentum-sparkline-bar:nth-last-child(-n + 2) {
+  background: #e7bc4c;
+  border: 0;
+  box-shadow: none;
+}
