@@ -1,5 +1,14 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { FaRegEye, FaRegEyeSlash } from "react-icons/fa";
+import { FiMoon, FiSun } from "react-icons/fi";
+import {
+  IconUserPlus,
+  IconRefresh,
+  IconChartBar,
+  IconClipboardList,
+  IconCircleCheck
+} from "@tabler/icons-react";
 import Button from "./components/Button.jsx";
 import DashboardPage from "./pages/Dashboard.jsx";
 import ProductsPage from "./pages/Products.jsx";
@@ -10,19 +19,17 @@ import { useAccess } from "./access/AccessContext.jsx";
 import { connectShopifyStore, disconnectShopifyStore, getOnboardingStatus } from "./api.js";
 
 const THEME_MODE_KEY = "metric-mango.theme-mode";
-const THEME_MODE_SEQUENCE = ["system", "light", "dark"];
+const THEME_MODE_SEQUENCE = ["light", "dark"];
 
 function getInitialThemeMode() {
-  if (typeof window === "undefined") return "system";
+  if (typeof window === "undefined") return "dark";
   const storedMode = String(window.localStorage.getItem(THEME_MODE_KEY) || "").toLowerCase();
   if (THEME_MODE_SEQUENCE.includes(storedMode)) return storedMode;
-  return "system";
+  return "dark";
 }
 
 function resolveThemeMode(mode) {
-  if (mode === "light" || mode === "dark") return mode;
-  if (typeof window === "undefined") return "dark";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return mode === "dark" ? "dark" : "light";
 }
 
 function nextThemeMode(currentMode) {
@@ -91,97 +98,433 @@ function AuthLoadingPage({ message }) {
   );
 }
 
-function LandingPage() {
+function LandingAuthModal({ open, mode, onClose }) {
+  const navigate = useNavigate();
+  const { signIn, signUp } = useAuth();
+  const [tab, setTab] = useState(mode || "signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setTab(mode || "signin");
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+    setError("");
+    setSubmitting(false);
+  }, [open, mode]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handleKeyDown(event) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, open]);
+
+  if (!open) return null;
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    setSubmitting(true);
+    setError("");
+
+    try {
+      if (!isValidEmail(normalizedEmail)) {
+        setError("Enter a valid email address.");
+        return;
+      }
+
+      if (password.length < 6) {
+        setError("Password must be at least 6 characters.");
+        return;
+      }
+
+      if (tab === "signup" && password !== confirmPassword) {
+        setError("Passwords do not match.");
+        return;
+      }
+
+      if (tab === "signup") {
+        await signUp(normalizedEmail, password);
+      } else {
+        await signIn(normalizedEmail, password);
+      }
+
+      onClose();
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      setError(mapAuthError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
-    <div className="lp-shell">
-      <div className="lp-glow" aria-hidden="true" />
-      <main className="lp-container">
-        <section className="lp-hero">
-          <div className="lp-pill">Metric Mango for Shopify</div>
-          <h1>Stop Stockouts Before They Cost You Sales.</h1>
-          <p>Get clear restock actions, demand forecasts, and weekly priority lists your team can execute fast.</p>
-          <div className="lp-proof-strip" role="status" aria-label="Product proof points">
-            <span>Setup in under 2 minutes</span>
-            <span>One plan. All features.</span>
-            <span>Built for Shopify teams</span>
+    <div
+      className="mm-auth-overlay"
+      role="presentation"
+      onMouseDown={event => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="mm-auth-modal" role="dialog" aria-modal="true" aria-labelledby="landing-auth-title">
+        <button type="button" className="mm-auth-close" aria-label="Close authentication modal" onClick={onClose}>
+          &times;
+        </button>
+        <p className="mm-auth-eyebrow">Metric Mango Access</p>
+        <h2 id="landing-auth-title">Sign in to your account</h2>
+        <div className="mm-auth-tabs" role="tablist" aria-label="Authentication mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "signup"}
+            className={`mm-auth-tab ${tab === "signup" ? "active" : ""}`}
+            onClick={() => setTab("signup")}
+          >
+            Sign Up
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "signin"}
+            className={`mm-auth-tab ${tab === "signin" ? "active" : ""}`}
+            onClick={() => setTab("signin")}
+          >
+            Sign In
+          </button>
+        </div>
+
+        <button
+          type="button"
+          className="mm-google-btn"
+          onClick={() => setError("Google OAuth is coming soon. Use email and password for now.")}
+        >
+          <span aria-hidden="true">G</span>
+          Continue with Google
+        </button>
+
+        <form className="mm-auth-form" onSubmit={handleSubmit}>
+          <label htmlFor="landing-auth-email">Work email</label>
+          <input
+            id="landing-auth-email"
+            type="email"
+            value={email}
+            onChange={event => setEmail(event.target.value)}
+            placeholder="you@store.com"
+            autoComplete="email"
+            required
+          />
+
+          <label htmlFor="landing-auth-password">Password</label>
+          <input
+            id="landing-auth-password"
+            type="password"
+            value={password}
+            onChange={event => setPassword(event.target.value)}
+            autoComplete={tab === "signup" ? "new-password" : "current-password"}
+            minLength={6}
+            required
+          />
+
+          {tab === "signup" ? (
+            <>
+              <label htmlFor="landing-auth-confirm-password">Confirm password</label>
+              <input
+                id="landing-auth-confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={event => setConfirmPassword(event.target.value)}
+                autoComplete="new-password"
+                minLength={6}
+                required
+              />
+            </>
+          ) : null}
+
+          {error ? <p className="mm-auth-error">{error}</p> : null}
+          <button type="submit" className="mm-auth-submit" disabled={submitting}>
+            {submitting ? "Please wait..." : tab === "signup" ? "Create account" : "Sign in"}
+          </button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function LandingPage({ themeMode, onToggleTheme }) {
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState("signin");
+  const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const howItWorksOpenRef = useRef(false);
+  const howItWorksScrollTimerRef = useRef(null);
+  const howItWorksCloseTimerRef = useRef(null);
+  const resolvedTheme = resolveThemeMode(themeMode);
+
+  function openAuthModal(mode) {
+    setAuthMode(mode || "signin");
+    setIsAuthModalOpen(true);
+  }
+
+  const toggleHowItWorks = useCallback(() => {
+    const section = document.getElementById("how-it-works");
+    const btn = document.getElementById("how-it-works-btn");
+    if (!section || !btn) return;
+
+    if (howItWorksScrollTimerRef.current) {
+      window.clearTimeout(howItWorksScrollTimerRef.current);
+      howItWorksScrollTimerRef.current = null;
+    }
+    if (howItWorksCloseTimerRef.current) {
+      window.clearTimeout(howItWorksCloseTimerRef.current);
+      howItWorksCloseTimerRef.current = null;
+    }
+
+    if (!howItWorksOpenRef.current) {
+      section.style.display = "block";
+      section.style.transition = "none";
+      section.style.animation = "none";
+      void section.offsetWidth;
+      section.style.animation = "revealSection 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards";
+      howItWorksOpenRef.current = true;
+      setIsHowItWorksOpen(true);
+      howItWorksScrollTimerRef.current = window.setTimeout(() => {
+        const offset = 80;
+        const top = section.getBoundingClientRect().top + window.scrollY - offset;
+        window.scrollTo({ top, behavior: "smooth" });
+      }, 50);
+      return;
+    }
+
+    section.style.animation = "none";
+    section.style.opacity = "0";
+    section.style.transform = "translateY(-16px)";
+    section.style.transition = "opacity 0.3s ease, transform 0.3s ease";
+    howItWorksCloseTimerRef.current = window.setTimeout(() => {
+      section.style.display = "none";
+      section.style.transition = "none";
+      section.style.opacity = "0";
+      section.style.transform = "translateY(-16px)";
+      howItWorksCloseTimerRef.current = null;
+    }, 300);
+    howItWorksOpenRef.current = false;
+    setIsHowItWorksOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key !== "Escape") return;
+      if (isAuthModalOpen) return;
+      if (!howItWorksOpenRef.current) return;
+      toggleHowItWorks();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isAuthModalOpen, toggleHowItWorks]);
+
+  useEffect(() => {
+    return () => {
+      if (howItWorksScrollTimerRef.current) window.clearTimeout(howItWorksScrollTimerRef.current);
+      if (howItWorksCloseTimerRef.current) window.clearTimeout(howItWorksCloseTimerRef.current);
+    };
+  }, []);
+
+  return (
+    <div className="mm-landing-shell">
+      <header className="mm-navbar">
+        <div className="mm-navbar-inner">
+          <Link className="mm-logo" to="/" aria-label="Metric Mango home">
+            <img className="mm-logo-image" src="/logo.svg" alt="Metric Mango" width="174" height="58" />
+          </Link>
+          <nav className="mm-navbar-links" aria-label="Landing navigation">
+            <a href="#features">Features</a>
+            <a href="#pricing">Pricing</a>
+          </nav>
+          <div className="mm-navbar-actions">
+            <button
+              type="button"
+              className="theme-toggle-btn theme-toggle-icon-btn mm-theme-toggle"
+              onClick={onToggleTheme}
+              title={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              aria-label={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {resolvedTheme === "dark" ? <FiMoon aria-hidden="true" /> : <FiSun aria-hidden="true" />}
+            </button>
+            <button type="button" className="mm-nav-auth-btn" onClick={() => openAuthModal("signin")}>
+              Sign In / Sign Up
+            </button>
           </div>
-          <div className="lp-actions">
-            <Button as={Link} to="/signup" variant="primary">Start Free 7-Day Trial</Button>
-            <Button as={Link} to="/signin" variant="secondary">Sign In / Sign Up</Button>
+        </div>
+      </header>
+
+      <main className="mm-landing-main">
+        <section className="mm-hero" id="top">
+          <div className="mm-hero-glow" aria-hidden="true" />
+          <span className="mm-hero-badge mm-fade-up mm-delay-1">Built for Shopify operators</span>
+          <h1 className="mm-display mm-fade-up mm-delay-2">Stop Stockouts Before They Burn Revenue.</h1>
+          <p className="mm-fade-up mm-delay-3">
+            Metric Mango gives your team restock priorities, demand forecasts, and weekly action plans without dashboard clutter.
+          </p>
+          <div className="mm-feature-pills mm-fade-up mm-delay-4">
+            <span>7/14/30-Day Forecasting</span>
+            <span>Restock Signals</span>
+            <span>Weekly Priority Reports</span>
+          </div>
+          <div className="mm-hero-ctas mm-fade-up mm-delay-5">
+            <button type="button" className="mm-cta mm-cta-primary" onClick={() => openAuthModal("signup")}>
+              7 day free trial
+            </button>
+          </div>
+          <p className="mm-trust-whisper mm-fade-up mm-delay-6">
+            No sales call. No demo. No 47-page setup guide. Just plug in and go.
+          </p>
+          <button
+            id="how-it-works-btn"
+            type="button"
+            className="mm-cta mm-cta-primary mm-how-link mm-fade-up mm-delay-6"
+            onClick={toggleHowItWorks}
+          >
+            {isHowItWorksOpen ? "Got it ↑" : "How it works →"}
+          </button>
+        </section>
+
+        <section className="mm-how-wrap" id="how-it-works">
+          <div className="mm-how-it-works">
+            <p className="mm-how-eyebrow">How It Works</p>
+            <h2>From install to your first stockout alert in under 2 minutes.</h2>
+            <p className="mm-how-subline">No demo call. No setup wizard. No waiting for someone to onboard you.</p>
+
+            <div className="mm-how-flow">
+              <article className="mm-how-step">
+                <span className="mm-how-step-badge">01</span>
+                <div className="mm-how-step-icon-container">
+                  <IconUserPlus size={28} stroke={1.5} color="#F5C518" />
+                </div>
+                <h3>Sign up &amp; connect your store</h3>
+                <p>Create your account and enter your Shopify store name. That&apos;s all we need - no API keys, no copy-pasting, no tech setup.</p>
+              </article>
+
+              <article className="mm-how-step">
+                <span className="mm-how-step-badge">02</span>
+                <div className="mm-how-step-icon-container">
+                  <IconRefresh size={28} stroke={1.5} color="#F5C518" />
+                </div>
+                <h3>We sync your store data</h3>
+                <p>Your sales history, product catalog, and order data sync automatically. No CSV uploads. No manual mapping.</p>
+              </article>
+
+              <article className="mm-how-step">
+                <span className="mm-how-step-badge">03</span>
+                <div className="mm-how-step-icon-container">
+                  <IconChartBar size={28} stroke={1.5} color="#F5C518" />
+                </div>
+                <h3>Your dashboard goes live</h3>
+                <p>Within minutes you&apos;ll see your top at-risk SKUs, demand forecasts, and a full revenue overview - ready to act on.</p>
+              </article>
+
+              <article className="mm-how-step">
+                <span className="mm-how-step-badge">04</span>
+                <div className="mm-how-step-icon-container">
+                  <IconClipboardList size={28} stroke={1.5} color="#F5C518" />
+                </div>
+                <h3>Get your weekly action report</h3>
+                <p>Every week, Metric Mango sends your team a prioritized restock list. No login needed - just open, read, act.</p>
+              </article>
+            </div>
+
+            <div className="mm-how-chips">
+              <span className="mm-chip" style={{ display: 'flex', alignItems: 'center' }}>
+                <IconCircleCheck size={15} stroke={2} color="#F5C518" style={{ marginRight: '5px', flexShrink: 0 }} />
+                No credit card to install
+              </span>
+              <span className="mm-chip" style={{ display: 'flex', alignItems: 'center' }}>
+                <IconCircleCheck size={15} stroke={2} color="#F5C518" style={{ marginRight: '5px', flexShrink: 0 }} />
+                Works with any Shopify plan
+              </span>
+              <span className="mm-chip" style={{ display: 'flex', alignItems: 'center' }}>
+                <IconCircleCheck size={15} stroke={2} color="#F5C518" style={{ marginRight: '5px', flexShrink: 0 }} />
+                Cancel anytime in one click
+              </span>
+            </div>
+
+            <div className="mm-how-compare">
+              <p className="mm-how-compare-muted">Other tools: 3-week onboarding, sales call required, USD pricing.</p>
+              <p className="mm-how-compare-strong">Metric Mango: 2 minutes.</p>
+            </div>
+
+            <div className="mm-how-cta-wrap">
+              <button type="button" className="mm-cta mm-cta-secondary" onClick={() => openAuthModal("signin")}>
+                Sign In / Sign Up
+              </button>
+              <p>No credit card required. Cancel anytime.</p>
+              <p>Join stores already using Metric Mango to prevent stockouts.</p>
+            </div>
           </div>
         </section>
 
-        <section className="lp-section">
-          <h2>What You Get in Week 1</h2>
-          <div className="lp-outcomes">
-            <article className="lp-outcome-card">
-              <div className="lp-outcome-value">Top 5 SKUs</div>
-              <p>Instant list of products likely to stock out first.</p>
-            </article>
-            <article className="lp-outcome-card">
-              <div className="lp-outcome-value">7/14/30-Day</div>
-              <p>Demand signals that help you restock with confidence.</p>
-            </article>
-            <article className="lp-outcome-card">
-              <div className="lp-outcome-value">Weekly Action Report</div>
-              <p>Clear recommendations sent to your team to prevent misses.</p>
-            </article>
+        <section className="mm-stats-bar" aria-label="Core value metrics">
+          <article>
+            <strong>2 min</strong>
+            <span>to get first risk report</span>
+          </article>
+          <article>
+            <strong>7/14/30d</strong>
+            <span>demand windows for planning</span>
+          </article>
+          <article>
+            <strong>1 plan</strong>
+            <span>all features included</span>
+          </article>
+        </section>
+
+        <section className="mm-features" id="features">
+          <div className="mm-section-head">
+            <p className="mm-kicker">What You Get</p>
+            <h2>Modern inventory intelligence, built for execution.</h2>
           </div>
-        </section>
-
-        <section className="lp-section">
-          <h2>Why Teams Choose Metric Mango</h2>
-          <p>Instead of giving you only charts, Metric Mango tells you what to restock now, what can wait, and where revenue is at risk.</p>
-        </section>
-
-        <section className="lp-section">
-          <h2>Features</h2>
-          <div className="lp-features">
-            <article className="lp-feature-card">
+          <div className="mm-feature-grid">
+            <article className="mm-feature-card">
               <h3>Demand Forecasts</h3>
-              <p>See trend shifts across 7, 14, and 30 days before inventory runs out.</p>
+              <p>Track momentum across 7, 14, and 30 days before your best sellers run dry.</p>
             </article>
-            <article className="lp-feature-card">
+            <article className="mm-feature-card">
               <h3>Restock Priorities</h3>
-              <p>Know exactly which products need action today and which are safe to delay.</p>
+              <p>See exactly which SKUs need action now, with expected demand versus stock on hand.</p>
             </article>
-            <article className="lp-feature-card">
-              <h3>Weekly Team Reports</h3>
-              <p>Share one simple action list with operations and buying teams every week.</p>
-            </article>
-          </div>
-        </section>
-
-        <section className="lp-section">
-          <h2>Merchant Feedback</h2>
-          <div className="lp-testimonials">
-            <article className="lp-testimonial-card">
-              <p>"We finally know what to reorder first. No more guessing at midnight."</p>
-              <span>Operations Lead, Apparel Brand</span>
-            </article>
-            <article className="lp-testimonial-card">
-              <p>"The weekly action list is better than 10 different reports."</p>
-              <span>Founder, D2C Accessories Store</span>
+            <article className="mm-feature-card">
+              <h3>Weekly Action Reports</h3>
+              <p>Give operations and buying teams one clean list of what to reorder and what to defer.</p>
             </article>
           </div>
         </section>
 
-        <section className="lp-section lp-pricing">
-          <h2>Pricing</h2>
-          <p>One plan. All features. No tiers.</p>
-          <div className="lp-price">₹499 / $9<span> per month</span></div>
-          <p className="lp-roi-note">If Metric Mango prevents one stockout, it usually pays for itself.</p>
-        </section>
-
-        <section className="lp-section lp-final-cta">
-          <h2>Ready to prevent your next stockout?</h2>
-          <p>Start free, connect your store, and get your first priority list in minutes.</p>
-          <div className="lp-actions">
-            <Button as={Link} to="/signup" variant="primary">Start Free 7-Day Trial</Button>
-            <Button as="a" href="mailto:sales@metricmango.com" variant="secondary">Talk to Sales</Button>
+        <section className="mm-pricing" id="pricing">
+          <p className="mm-kicker">Pricing</p>
+          <h2>One plan. No tiers.</h2>
+          <p>Start with a 7-day free trial and get full access from day one.</p>
+          <div className="mm-pricing-grid">
+            <article className="mm-pricing-item">
+              <h3>India Stores</h3>
+              <p className="mm-pricing-amount">₹499<span>/month</span></p>
+              <p className="mm-pricing-note">For merchants billed in INR.</p>
+            </article>
+            <article className="mm-pricing-item">
+              <h3>Global Stores</h3>
+              <p className="mm-pricing-amount">$9<span>/month</span></p>
+              <p className="mm-pricing-note">For non-India merchants billed in USD.</p>
+            </article>
           </div>
         </section>
       </main>
+
+      <LandingAuthModal open={isAuthModalOpen} mode={authMode} onClose={() => setIsAuthModalOpen(false)} />
     </div>
   );
 }
@@ -191,6 +534,9 @@ function AuthPage({ mode }) {
   const { signIn, signUp, requestPasswordReset } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -210,6 +556,11 @@ function AuthPage({ mode }) {
 
       if (mode === "signup" && password.length < 6) {
         setError("Password must be at least 6 characters.");
+        return;
+      }
+
+      if (mode === "signup" && password !== confirmPassword) {
+        setError("Passwords do not match.");
         return;
       }
 
@@ -258,15 +609,52 @@ function AuthPage({ mode }) {
           {mode !== "forgot" ? (
             <>
               <label htmlFor="auth-password">Password</label>
-              <input
-                id="auth-password"
-                type="password"
-                value={password}
-                onChange={event => setPassword(event.target.value)}
-                autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                minLength={6}
-                required
-              />
+              <div className="password-field-wrapper">
+                <input
+                  id="auth-password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={event => setPassword(event.target.value)}
+                  autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                  minLength={6}
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                  title={showPassword ? "Hide password" : "Show password"}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <FaRegEyeSlash aria-hidden="true" /> : <FaRegEye aria-hidden="true" />}
+                </button>
+              </div>
+
+              {mode === "signup" ? (
+                <>
+                  <label htmlFor="auth-confirm-password">Re-enter password</label>
+                  <div className="password-field-wrapper">
+                    <input
+                      id="auth-confirm-password"
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={event => setConfirmPassword(event.target.value)}
+                      autoComplete="new-password"
+                      minLength={6}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      title={showConfirmPassword ? "Hide password" : "Show password"}
+                      aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                    >
+                      {showConfirmPassword ? <FaRegEyeSlash aria-hidden="true" /> : <FaRegEye aria-hidden="true" />}
+                    </button>
+                  </div>
+                </>
+              ) : null}
             </>
           ) : null}
 
@@ -294,6 +682,7 @@ function DashboardLayout({ themeMode, onToggleTheme }) {
   const location = useLocation();
   const { user, logout, sessionExpired, isFirebaseConfigured, onboardingRequired } = useAuth();
   const { accessState, locked } = useAccess();
+  const resolvedTheme = resolveThemeMode(themeMode);
 
   async function handleLogout() {
     await logout();
@@ -315,9 +704,9 @@ function DashboardLayout({ themeMode, onToggleTheme }) {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <div className="brand-badge">
-            <img className="brand-logo" src="/logo.svg" alt="Metric Mango" />
-          </div>
+          <Link className="brand-logo-link" to="/" aria-label="Go to landing page">
+            <img className="brand-logo" src="/logo.svg" alt="Metric Mango" width="192" height="64" />
+          </Link>
           <p>Predict demand. Prevent stockouts. Grow profit.</p>
         </div>
         <div className="topbar-right">
@@ -330,8 +719,14 @@ function DashboardLayout({ themeMode, onToggleTheme }) {
           <div className="session-meta">
             <span className="session-email">{user?.email || "Signed in"}</span>
             {accessState.trialExpired || locked ? <span className="lock-pill">Locked</span> : null}
-            <button type="button" className="theme-toggle-btn" onClick={onToggleTheme} title="Toggle theme mode">
-              {themeMode === "system" ? "System" : themeMode === "light" ? "Light" : "Dark"}
+            <button
+              type="button"
+              className="theme-toggle-btn theme-toggle-icon-btn"
+              onClick={onToggleTheme}
+              title={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              aria-label={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {resolvedTheme === "dark" ? <FiMoon aria-hidden="true" /> : <FiSun aria-hidden="true" />}
             </button>
             <Button type="button" variant="secondary" onClick={handleLogout}>Logout</Button>
           </div>
@@ -496,25 +891,14 @@ export default function App() {
 
   React.useEffect(() => {
     const root = document.documentElement;
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-
-    const applyTheme = () => {
-      const resolved = resolveThemeMode(themeMode);
-      root.setAttribute("data-theme", resolved);
-    };
-
-    applyTheme();
+    const resolved = resolveThemeMode(themeMode);
+    root.setAttribute("data-theme", resolved);
     window.localStorage.setItem(THEME_MODE_KEY, themeMode);
-
-    if (themeMode !== "system") return undefined;
-    const handleChange = () => applyTheme();
-    media.addEventListener("change", handleChange);
-    return () => media.removeEventListener("change", handleChange);
   }, [themeMode]);
 
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={<LandingPage themeMode={themeMode} onToggleTheme={() => setThemeMode(current => nextThemeMode(current))} />} />
       <Route path="/signin" element={<PublicOnlyRoute><AuthPage mode={forgotMode ? "forgot" : "signin"} /></PublicOnlyRoute>} />
       <Route path="/signup" element={<PublicOnlyRoute><AuthPage mode="signup" /></PublicOnlyRoute>} />
 

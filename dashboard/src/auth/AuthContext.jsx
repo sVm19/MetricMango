@@ -71,7 +71,7 @@ export function AuthProvider({ children }) {
       return undefined;
     }
 
-    let unsubscribe = () => {};
+    let unsubscribe = () => { };
     let isActive = true;
 
     async function initAuth() {
@@ -177,10 +177,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const unsubscribe = onUnauthorized(() => {
       setSessionExpired(true);
-      logout().catch(error => {
-        // Avoid silent failures during forced logout flows.
-        console.warn("Forced logout failed after unauthorized response", error);
-      });
+      logout().catch(() => { });
     });
     return unsubscribe;
   }, [logout]);

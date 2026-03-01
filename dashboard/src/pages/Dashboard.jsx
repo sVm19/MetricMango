@@ -29,14 +29,6 @@ function formatMoneyByCurrency(currency, amount) {
   }).format(amount || 0);
 }
 
-function formatPlanLabel(plan) {
-  const value = String(plan || "").toLowerCase();
-  if (value === "active" || value === "paid") return "Pro";
-  if (value === "trial") return "Trial";
-  if (value === "inactive") return "Inactive";
-  return "Unknown";
-}
-
 function formatPercent(value) {
   const numeric = Number(value || 0);
   const sign = numeric > 0 ? "+" : "";
@@ -54,6 +46,12 @@ function getTrendPercent(currentValue, previousValue) {
   return ((current - previous) / previous) * 100;
 }
 
+function formatDaysLeft(value) {
+  if (!Number.isFinite(Number(value))) return "No sales velocity";
+  const days = Math.max(0, Math.ceil(Number(value)));
+  return `~${days} days left`;
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { overview, loading: accessLoading, error: accessError, locked } = useAccess();
@@ -65,8 +63,10 @@ export default function Dashboard() {
     unitsShort: 0,
     revenueAtRisk: 0
   });
+  const [syncedProductCount, setSyncedProductCount] = useState(0);
   const [impactLoading, setImpactLoading] = useState(true);
   const [impactError, setImpactError] = useState("");
+  const [stockoutRisks, setStockoutRisks] = useState([]);
   const [momentum, setMomentum] = useState(null);
   const [momentumWindow, setMomentumWindow] = useState(7);
   const [revenueWindow, setRevenueWindow] = useState(7);
@@ -100,6 +100,8 @@ export default function Dashboard() {
       if (locked) {
         if (!active) return;
         setImpact({ atRiskSkus: 0, unitsShort: 0, revenueAtRisk: 0 });
+        setSyncedProductCount(0);
+        setStockoutRisks([]);
         setImpactError("");
         setImpactLoading(false);
         return;
@@ -113,34 +115,56 @@ export default function Dashboard() {
           getProducts()
         ]);
         if (!active) return;
+        setSyncedProductCount(Array.isArray(productData?.products) ? productData.products.length : 0);
 
-        const priceByProductId = new Map(
+        const productByProductId = new Map(
           (productData?.products || []).map(item => [
             String(item?.id || item?.productId || ""),
-            Number(item?.price || 0)
+            {
+              price: Number(item?.price || 0),
+              name: String(item?.name || "").trim()
+            }
           ])
         );
         let atRiskSkus = 0;
         let unitsShort = 0;
         let revenueAtRisk = 0;
+        const nextStockoutRisks = [];
 
-        for (const item of restockData?.suggestions || []) {
+        for (const [index, item] of (restockData?.suggestions || []).entries()) {
           if (String(item?.suggestion || "").toUpperCase() !== "RESTOCK") continue;
           atRiskSkus += 1;
+          const productId = String(item?.productId || item?.id || "");
+          const productMeta = productByProductId.get(productId) || {};
           const shortUnits = Math.max(0, Number(item?.expectedDemand || 0) - Number(item?.currentStock || 0));
           unitsShort += shortUnits;
-          const price = Number(priceByProductId.get(String(item?.productId || "")) || 0);
+          const price = Number(productMeta?.price || 0);
           revenueAtRisk += shortUnits * price;
+
+          const avgDailySales = Math.max(0, Number(item?.avgDailySales || 0));
+          const currentStock = Math.max(0, Number(item?.currentStock || 0));
+          const daysLeft = avgDailySales > 0 ? currentStock / avgDailySales : Number.POSITIVE_INFINITY;
+          const fallbackName = productId ? `SKU ${productId}` : `SKU ${index + 1}`;
+          nextStockoutRisks.push({
+            productId: productId || `risk-${index + 1}`,
+            skuName: String(productMeta?.name || item?.name || fallbackName),
+            daysLeft
+          });
         }
+
+        nextStockoutRisks.sort((first, second) => Number(first.daysLeft || 0) - Number(second.daysLeft || 0));
 
         setImpact({
           atRiskSkus,
           unitsShort: Math.round(unitsShort),
           revenueAtRisk
         });
+        setStockoutRisks(nextStockoutRisks);
       } catch {
         if (!active) return;
         setImpact({ atRiskSkus: 0, unitsShort: 0, revenueAtRisk: 0 });
+        setSyncedProductCount(0);
+        setStockoutRisks([]);
         setImpactError("Impact unavailable");
       } finally {
         if (active) setImpactLoading(false);
@@ -199,12 +223,10 @@ export default function Dashboard() {
     trial: { active: false }
   };
   const isEmptyStore = Number(safeOverview.totalOrders || 0) === 0;
-  const normalizedPlan = formatPlanLabel(safeOverview.plan);
   const impactCurrency = pricing?.currency || "INR";
   const skuRiskLevel = impact.atRiskSkus >= 3 ? "high" : impact.atRiskSkus >= 1 ? "medium" : "low";
   const unitsRiskLevel = impact.unitsShort >= 25 ? "high" : impact.unitsShort >= 8 ? "medium" : "low";
   const revenueRiskLevel = impact.revenueAtRisk >= 30000 ? "high" : impact.revenueAtRisk >= 8000 ? "medium" : "low";
-  const planFeatureLine = "Forecasting • Restock Signals • CSV Exports • Email Alerts";
   const momentumWindows = momentum?.windows || {};
   const selectedMomentum = momentumWindows[momentumWindow] || null;
   const selectedRevenueMomentum = momentumWindows[revenueWindow] || null;
@@ -225,11 +247,6 @@ export default function Dashboard() {
   const totalRevenue = Number(safeOverview.totalRevenue || 0);
   const totalOrders = Number(safeOverview.totalOrders || 0);
   const avgRevenuePerOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-  const pricingDisplay = pricing
-    ? `${formatPrice(pricing.currency, pricing.amount)} / ${pricing.interval}`
-    : pricingLoading
-      ? "Loading..."
-      : "Unavailable";
   const ordersTrendTone = ordersTrend7 >= 0 ? "positive" : "negative";
   const revenueSeries = Array.isArray(selectedRevenueMomentum?.currentRevenueSeries)
     ? selectedRevenueMomentum.currentRevenueSeries
@@ -244,6 +261,13 @@ export default function Dashboard() {
   const averageRevenuePerDay = revenueWindow > 0 ? revenueTotal / revenueWindow : 0;
   const peakRevenueDayValue = revenueSeries.length ? Math.max(...revenueSeries) : 0;
   const peakRevenueDayIndex = revenueSeries.findIndex(value => value === peakRevenueDayValue) + 1;
+  const topStockoutRisks = stockoutRisks.slice(0, 3);
+  const showFirstTimeWelcome = !locked
+    && !impactLoading
+    && !impactError
+    && totalOrders <= 0
+    && totalRevenue <= 0
+    && syncedProductCount <= 0;
 
   return (
     <div className="page dashboard-page">
@@ -255,70 +279,126 @@ export default function Dashboard() {
       <div className="page-header">
         <div>
           <h2>Dashboard Overview</h2>
-          <p className="page-subtitle">Key sales totals at a glance.</p>
+          <p className="page-subtitle">Everything that matters, in one view.</p>
         </div>
       </div>
 
-      <div className="summary-grid">
-        <article className="stat-card summary-insight-card">
-          <div className="summary-card-head">
-            <div className="stat-label">Total Revenue</div>
-            <span className="summary-badge">Store Lifetime</span>
-          </div>
-          <div className="stat-value">{formatMoney(totalRevenue)}</div>
-          <div className="summary-meta-grid">
-            <div className="summary-meta-item">
-              <span className="stat-label">Last 7d</span>
-              <strong>{formatMoney(safeOverview.last7DaysRevenue)}</strong>
-            </div>
-            <div className="summary-meta-item">
-              <span className="stat-label">Avg / order</span>
-              <strong>{formatMoney(avgRevenuePerOrder)}</strong>
+      {showFirstTimeWelcome ? (
+        <section className="card welcome-banner-card">
+          <div className="welcome-banner-main">
+            <div className="stat-label">Getting Started</div>
+            <h3 className="welcome-banner-title">Welcome to Metric Mango</h3>
+            <p className="welcome-banner-subline">
+              Setup complete. Your first insights will appear within 24 hours of your store&apos;s next sale.
+            </p>
+            <div className="welcome-milestones" role="status" aria-label="Getting started progress">
+              <span className="welcome-milestone welcome-milestone-done">&#10003; Store connected</span>
+              <span className="welcome-milestone welcome-milestone-awaiting">&#9203; Awaiting first sale</span>
+              <span className="welcome-milestone welcome-milestone-inactive">&#9675; Forecast ready</span>
             </div>
           </div>
-        </article>
+          <div className="welcome-banner-actions">
+            <button type="button" className="welcome-guide-cta" onClick={() => navigate("/dashboard/onboarding")}>
+              View Setup Guide &rarr;
+            </button>
+          </div>
+        </section>
+      ) : (
+        <div className="summary-grid">
+          <article className="stat-card summary-insight-card">
+            <div className="summary-card-head">
+              <div className="stat-label">Total Revenue</div>
+              <span className="summary-badge">Store Lifetime</span>
+            </div>
+            {totalRevenue === 0 ? (
+              <div className="card-empty-state">
+                <div className="empty-state-icon">₹</div>
+                <div className="empty-state-headline">No revenue data yet</div>
+                <div className="empty-state-subline">Lifetime store performance at a glance.</div>
+              </div>
+            ) : (
+              <>
+                <div className="stat-value">{formatMoney(totalRevenue)}</div>
+                <div className="summary-meta-grid">
+                  <div className="summary-meta-item">
+                    <span className="stat-label">Last 7d</span>
+                    <strong>{formatMoney(safeOverview.last7DaysRevenue)}</strong>
+                  </div>
+                  <div className="summary-meta-item">
+                    <span className="stat-label">Avg / order</span>
+                    <strong>{formatMoney(avgRevenuePerOrder)}</strong>
+                  </div>
+                </div>
+              </>
+            )}
+          </article>
 
-        <article className="stat-card summary-insight-card">
-          <div className="summary-card-head">
-            <div className="stat-label">Orders</div>
-            <span className={`summary-badge summary-badge-${ordersTrendTone}`}>{formatPercent(ordersTrend7)} (7d)</span>
-          </div>
-          <div className="stat-value">{formatPlainNumber(totalOrders)}</div>
-          <div className="summary-meta-grid">
-            <div className="summary-meta-item">
-              <span className="stat-label">Last 7d</span>
-              <strong>{formatPlainNumber(last7Orders)}</strong>
+          <article className="stat-card summary-insight-card">
+            <div className="summary-card-head">
+              <div className="stat-label">Orders</div>
+              <span className={`summary-badge summary-badge-${ordersTrendTone}`}>{formatPercent(ordersTrend7)} (7d)</span>
             </div>
-            <div className="summary-meta-item">
-              <span className="stat-label">Status</span>
-              <strong>{ordersTrend7 >= 10 ? "Growing" : ordersTrend7 <= -10 ? "Slowing" : "Stable"}</strong>
-            </div>
-          </div>
-        </article>
+            {totalOrders === 0 ? (
+              <div className="card-empty-state">
+                <div className="empty-state-icon">📦</div>
+                <div className="empty-state-headline">No orders yet</div>
+                <div className="empty-state-subline">Demand in motion — tracked daily.</div>
+              </div>
+            ) : (
+              <>
+                <div className="stat-value">{formatPlainNumber(totalOrders)}</div>
+                <div className="summary-meta-grid">
+                  <div className="summary-meta-item">
+                    <span className="stat-label">Last 7d</span>
+                    <strong>{formatPlainNumber(last7Orders)}</strong>
+                  </div>
+                  <div className="summary-meta-item">
+                    <span className="stat-label">Status</span>
+                    <strong>{ordersTrend7 >= 10 ? "Growing" : ordersTrend7 <= -10 ? "Slowing" : "Stable"}</strong>
+                  </div>
+                </div>
+              </>
+            )}
+          </article>
 
-        <article className="stat-card summary-insight-card">
-          <div className="summary-card-head">
-            <div className="stat-label">Pricing</div>
-            <span className="summary-badge">One Plan</span>
-          </div>
-          <div className="stat-value summary-price-value">{pricingDisplay}</div>
-          <div className="summary-meta-grid">
-            <div className="summary-meta-item">
-              <span className="stat-label">Active Plan</span>
-              <strong>{normalizedPlan}</strong>
+          <article className="stat-card summary-insight-card">
+            <div className="summary-card-head">
+              <div className="stat-label">Stockout Risk</div>
+              <span className="summary-badge">{formatPlainNumber(impact.atRiskSkus)} Critical</span>
             </div>
-            <div className="summary-meta-item">
-              <span className="stat-label">Includes</span>
-              <strong>Forecast, Restock, CSV, Alerts</strong>
-            </div>
-          </div>
-          <div className="stat-helper">
-            {safeOverview.plan === "trial"
-              ? `${Number(safeOverview.trialDaysLeft || 0)} days left • ${planFeatureLine}`
-              : "No tiers. No upsells. Full feature access."}
-          </div>
-        </article>
-      </div>
+            {impact.atRiskSkus === 0 ? (
+              <div className="card-empty-state">
+                <div className="empty-state-icon empty-state-icon-success">✓</div>
+                <div className="empty-state-headline">All clear — no SKUs at risk</div>
+                <div className="empty-state-subline">Your early warning system for stockouts.</div>
+              </div>
+            ) : (
+              <>
+                <div className="stat-value">{formatPlainNumber(impact.atRiskSkus)}</div>
+                <div className="stockout-risk-list">
+                  {topStockoutRisks.map(risk => (
+                    <div key={risk.productId} className="summary-meta-item stockout-risk-item">
+                      <div className="stockout-risk-main">
+                        <span
+                          className={`stockout-risk-dot ${Number(risk.daysLeft || 0) <= 3 ? "stockout-risk-critical" : "stockout-risk-warning"}`}
+                          aria-hidden="true"
+                        />
+                        <span className="stockout-risk-name" title={risk.skuName}>{risk.skuName}</span>
+                      </div>
+                      <span className="stockout-risk-days">{formatDaysLeft(risk.daysLeft)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            {impact.atRiskSkus > 0 ? (
+              <button type="button" className="stockout-risk-cta" onClick={() => navigate("/dashboard/products")}>
+                View All At-Risk SKUs &rarr;
+              </button>
+            ) : null}
+          </article>
+        </div>
+      )}
 
       <div className="section-divider" aria-hidden="true" />
 
