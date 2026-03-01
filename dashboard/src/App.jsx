@@ -341,7 +341,7 @@ function LandingPage({ themeMode, onToggleTheme }) {
       <header className="mm-navbar">
         <div className="mm-navbar-inner">
           <Link className="mm-logo" to="/" aria-label="Metric Mango home">
-            <img className="mm-logo-image" src="/logo.svg" alt="Metric Mango" width="174" height="58" />
+            <img className="mm-logo-image" src={resolvedTheme === "dark" ? "/logo-dark.svg" : "/logo.svg"} alt="Metric Mango" width="174" height="58" />
           </Link>
           <nav className="mm-navbar-links" aria-label="Landing navigation">
             <a href="#features">Features</a>
@@ -705,7 +705,7 @@ function DashboardLayout({ themeMode, onToggleTheme }) {
       <header className="topbar">
         <div className="brand">
           <Link className="brand-logo-link" to="/" aria-label="Go to landing page">
-            <img className="brand-logo" src="/logo.svg" alt="Metric Mango" width="192" height="64" />
+            <img className="brand-logo" src={resolvedTheme === "dark" ? "/logo-dark.svg" : "/logo.svg"} alt="Metric Mango" width="192" height="64" />
           </Link>
           <p>Predict demand. Prevent stockouts. Grow profit.</p>
         </div>
