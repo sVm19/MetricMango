@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const shopifyWebhook = require("./routes/shopifyWebhook");
 const lemonSqueezyWebhook = require("./routes/lemonSqueezyWebhook");
 const razorpayWebhook = require("./routes/razorpayWebhook");
+const resendWebhook = require("./routes/resendWebhook");
 const dashboard = require("./routes/dashboard");
 const forecast = require("./routes/forecast");
 const { computeRestockSuggestions } = require("./services/restockService");
@@ -681,6 +682,8 @@ app.use("/webhook/shopify", express.raw({ type: "application/json", limit: "1mb"
 app.use("/webhook/lemonsqueezy", express.raw({ type: "application/json", limit: "1mb" }), webhookRateLimit, lemonSqueezyWebhook);
 // Use raw body for Razorpay signature verification (must run before JSON parsing).
 app.use("/webhook/razorpay", express.raw({ type: "application/json", limit: "1mb" }), webhookRateLimit, razorpayWebhook);
+// Use raw body for Resend signature verification
+app.use("/webhook/resend", express.raw({ type: "application/json", limit: "1mb" }), webhookRateLimit, resendWebhook);
 
 // JSON parsing for all other routes.
 app.use(express.json({ limit: "1mb" }));
@@ -1423,7 +1426,7 @@ app.get("/shopify/callback", webhookRateLimit, async (req, res) => {
         shopifyInstallStatus: "error",
         shopifyConnectionError: "Store already connected.",
         shopifyConnectionErrorAt: now
-      }, { merge: true }).catch(() => {});
+      }, { merge: true }).catch(() => { });
       return res.status(409).send("Store already connected.");
     }
 
@@ -1480,7 +1483,7 @@ app.get("/shopify/callback", webhookRateLimit, async (req, res) => {
         shopifyInstallStatus: "error",
         shopifyConnectionError: String(error?.message || "Shopify OAuth callback failed").slice(0, 500),
         shopifyConnectionErrorAt: admin.firestore.Timestamp.now()
-      }, { merge: true }).catch(() => {});
+      }, { merge: true }).catch(() => { });
     }
 
     return res.status(500).send("Failed to complete Shopify connection");

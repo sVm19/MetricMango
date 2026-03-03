@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import { getPricing } from "../api.js";
 
@@ -27,6 +28,7 @@ function formatPrice(amount, currency) {
 
 export default function Pricing() {
   const [pricing, setPricing] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let active = true;
@@ -86,7 +88,7 @@ export default function Pricing() {
             ))}
           </ul>
 
-          <Button type="button" variant="primary" fullWidth>
+          <Button type="button" variant="primary" fullWidth onClick={() => navigate("/dashboard/payment/" + (currency === "USD" ? "global" : "india"))}>
             {PLAN.cta}
           </Button>
         </div>

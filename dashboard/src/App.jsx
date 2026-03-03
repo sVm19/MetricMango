@@ -14,6 +14,7 @@ import DashboardPage from "./pages/Dashboard.jsx";
 import ProductsPage from "./pages/Products.jsx";
 import ForecastPage from "./pages/Forecast.jsx";
 import PricingPage from "./pages/Pricing.jsx";
+import PaymentPage from "./pages/Payment.jsx";
 import { useAuth } from "./auth/AuthContext.jsx";
 import { useAccess } from "./access/AccessContext.jsx";
 import { connectShopifyStore, disconnectShopifyStore, getOnboardingStatus } from "./api.js";
@@ -98,7 +99,7 @@ function AuthLoadingPage({ message }) {
   );
 }
 
-function LandingAuthModal({ open, mode, onClose }) {
+function LandingAuthModal({ open, mode, onClose, onAuthSuccess }) {
   const navigate = useNavigate();
   const { signIn, signUp } = useAuth();
   const [tab, setTab] = useState(mode || "signin");
@@ -158,7 +159,12 @@ function LandingAuthModal({ open, mode, onClose }) {
       }
 
       onClose();
-      navigate("/dashboard", { replace: true });
+      // After successful auth, trigger success callback to navigate to payment
+      if (onAuthSuccess) {
+        onAuthSuccess();
+      } else {
+        navigate("/dashboard", { replace: true });
+      }
     } catch (err) {
       setError(mapAuthError(err));
     } finally {
@@ -260,12 +266,35 @@ function LandingAuthModal({ open, mode, onClose }) {
 
 function LandingPage({ themeMode, onToggleTheme }) {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [selectedStore, setSelectedStore] = useState(null);
   const [authMode, setAuthMode] = useState("signin");
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const aboutDropdownRef = useRef(null);
   const howItWorksOpenRef = useRef(false);
   const howItWorksScrollTimerRef = useRef(null);
   const howItWorksCloseTimerRef = useRef(null);
   const resolvedTheme = resolveThemeMode(themeMode);
+
+  const [detectedStore, setDetectedStore] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch('https://get.geojs.io/v1/ip/country.json')
+      .then(res => res.json())
+      .then(data => {
+        if (!active) return;
+        if (data.country === 'IN') {
+          setDetectedStore('india');
+        } else {
+          setDetectedStore('global');
+        }
+      })
+      .catch(() => {
+        if (active) setDetectedStore('global'); // fallback
+      });
+    return () => { active = false; };
+  }, []);
 
   function openAuthModal(mode) {
     setAuthMode(mode || "signin");
@@ -322,12 +351,16 @@ function LandingPage({ themeMode, onToggleTheme }) {
     function handleKeyDown(event) {
       if (event.key !== "Escape") return;
       if (isAuthModalOpen) return;
+      if (isAboutOpen) {
+        setIsAboutOpen(false);
+        return;
+      }
       if (!howItWorksOpenRef.current) return;
       toggleHowItWorks();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isAuthModalOpen, toggleHowItWorks]);
+  }, [isAuthModalOpen, isAboutOpen, toggleHowItWorks]);
 
   useEffect(() => {
     return () => {
@@ -335,6 +368,18 @@ function LandingPage({ themeMode, onToggleTheme }) {
       if (howItWorksCloseTimerRef.current) window.clearTimeout(howItWorksCloseTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (aboutDropdownRef.current && !aboutDropdownRef.current.contains(event.target)) {
+        setIsAboutOpen(false);
+      }
+    }
+    if (isAboutOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isAboutOpen]);
 
   return (
     <div className="mm-landing-shell">
@@ -345,6 +390,63 @@ function LandingPage({ themeMode, onToggleTheme }) {
           </Link>
           <nav className="mm-navbar-links" aria-label="Landing navigation">
             <a href="#features">Features</a>
+            <span className="mm-about-wrap" ref={aboutDropdownRef}>
+              <button
+                id="about-btn"
+                type="button"
+                className="mm-about-trigger"
+                aria-expanded={isAboutOpen}
+                aria-haspopup="true"
+                onClick={() => setIsAboutOpen(prev => !prev)}
+              >
+                About
+              </button>
+              {isAboutOpen ? (
+                <div id="about-dropdown" className="mm-about-dropdown">
+                  <div className="mm-about-identity">
+                    <div className="mm-about-avatar" aria-hidden="true">SK</div>
+                    <div>
+                      <p className="mm-about-name">Shubham Kumar</p>
+                      <p className="mm-about-title">Founder &amp; Builder</p>
+                    </div>
+                  </div>
+                  <hr className="mm-about-divider" />
+                  <p className="mm-about-blurb">
+                    Built Metric Mango to solve the exact inventory problem we faced
+                    running our own Shopify store. No VC funding. No enterprise pricing.
+                    Just a tool that works.
+                  </p>
+                  <hr className="mm-about-divider" />
+                  <a
+                    href="https://www.linkedin.com/in/shubham-kumar-528099213/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mm-about-linkedin"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="#5BA4F5">
+                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037
+                      -1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046
+                      c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286z
+                      M5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063
+                      2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0
+                      .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24
+                      23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                    </svg>
+                    Connect on LinkedIn
+                  </a>
+                  <a
+                    href="mailto:team@metricmango.store"
+                    className="mm-about-email"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5c518" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="4" width="20" height="16" rx="2" />
+                      <path d="M22 4L12 13L2 4" />
+                    </svg>
+                    team@metricmango.store
+                  </a>
+                </div>
+              ) : null}
+            </span>
             <a href="#pricing">Pricing</a>
           </nav>
           <div className="mm-navbar-actions">
@@ -368,7 +470,7 @@ function LandingPage({ themeMode, onToggleTheme }) {
         <section className="mm-hero" id="top">
           <div className="mm-hero-glow" aria-hidden="true" />
           <span className="mm-hero-badge mm-fade-up mm-delay-1">Built for Shopify operators</span>
-          <h1 className="mm-display mm-fade-up mm-delay-2">Stop Stockouts Before They Burn Revenue.</h1>
+          <h1 className="mm-display mm-fade-up mm-delay-2">Know What to Reorder Before You Run Out.</h1>
           <p className="mm-fade-up mm-delay-3">
             Metric Mango gives your team restock priorities, demand forecasts, and weekly action plans without dashboard clutter.
           </p>
@@ -383,7 +485,7 @@ function LandingPage({ themeMode, onToggleTheme }) {
             </button>
           </div>
           <p className="mm-trust-whisper mm-fade-up mm-delay-6">
-            No sales call. No demo. No 47-page setup guide. Just plug in and go.
+            <strong><i>"No sales call. No demo. No 47-page setup guide. Just plug in and go."</i></strong>
           </p>
           <button
             id="how-it-works-btn"
@@ -505,26 +607,78 @@ function LandingPage({ themeMode, onToggleTheme }) {
           </div>
         </section>
 
-        <section className="mm-pricing" id="pricing">
-          <p className="mm-kicker">Pricing</p>
-          <h2>One plan. No tiers.</h2>
-          <p>Start with a 7-day free trial and get full access from day one.</p>
-          <div className="mm-pricing-grid">
-            <article className="mm-pricing-item">
-              <h3>India Stores</h3>
-              <p className="mm-pricing-amount">₹499<span>/month</span></p>
-              <p className="mm-pricing-note">For merchants billed in INR.</p>
-            </article>
-            <article className="mm-pricing-item">
-              <h3>Global Stores</h3>
-              <p className="mm-pricing-amount">$9<span>/month</span></p>
-              <p className="mm-pricing-note">For non-India merchants billed in USD.</p>
-            </article>
-          </div>
-        </section>
+        <div className="mm-ps-row">
+          {/* Pricing card */}
+          <section className="mm-pricing" id="pricing">
+            <p className="mm-kicker">Pricing</p>
+            <h2>One plan. No tiers.</h2>
+            <p>Start with a 7-day free trial and get full access from day one.</p>
+            <div className="mm-pricing-grid">
+              {detectedStore === 'india' ? (
+                <article className="mm-pricing-item" onClick={() => { setSelectedStore('india'); openAuthModal('signup'); }} style={{ cursor: 'pointer' }}>
+                  <h3>India Stores</h3>
+                  <p className="mm-pricing-amount">₹499<span>/month</span></p>
+                  <p className="mm-pricing-note">For merchants billed in INR.</p>
+                </article>
+              ) : null}
+              {detectedStore === 'global' ? (
+                <article className="mm-pricing-item" onClick={() => { setSelectedStore('global'); openAuthModal('signup'); }} style={{ cursor: 'pointer' }}>
+                  <h3>Global Stores</h3>
+                  <p className="mm-pricing-amount">$9<span>/month</span></p>
+                  <p className="mm-pricing-note">For non-India merchants billed in USD.</p>
+                </article>
+              ) : null}
+            </div>
+          </section>
+
+          {/* About card */}
+          <section className="mm-about-section" id="about-us">
+            <p className="mm-kicker">About Us</p>
+            <h2>Built by a store owner, for store owners.</h2>
+            <div className="mm-about-section-identity">
+              <div className="mm-about-section-avatar" aria-hidden="true">SK</div>
+              <div>
+                <p className="mm-about-section-name">Shubham Kumar</p>
+                <p className="mm-about-section-role">Founder &amp; Builder</p>
+              </div>
+            </div>
+            <p className="mm-about-section-blurb">
+              Built Metric Mango to solve the exact inventory problem we faced running our own Shopify store.
+              No VC funding. No enterprise pricing. Just a tool that works.
+            </p>
+            <div className="mm-about-section-links">
+              <a
+                href="https://www.linkedin.com/in/shubham-kumar-528099213/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mm-about-section-link mm-about-section-link--linkedin"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+                </svg>
+                Connect on LinkedIn
+              </a>
+              <a
+                href="mailto:team@metricmango.store"
+                className="mm-about-section-link mm-about-section-link--email"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <path d="M22 4L12 13L2 4" />
+                </svg>
+                team@metricmango.store
+              </a>
+            </div>
+          </section>
+        </div>
+
       </main>
 
-      <LandingAuthModal open={isAuthModalOpen} mode={authMode} onClose={() => setIsAuthModalOpen(false)} />
+      <LandingAuthModal open={isAuthModalOpen} mode={authMode} onClose={() => setIsAuthModalOpen(false)} onAuthSuccess={() => {
+        // navigate to payment page based on selectedStore
+        const target = selectedStore ? `/dashboard/payment/${selectedStore}` : '/dashboard';
+        navigate(target, { replace: true });
+      }} />
     </div>
   );
 }
@@ -681,7 +835,7 @@ function DashboardLayout({ themeMode, onToggleTheme }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, sessionExpired, isFirebaseConfigured, onboardingRequired } = useAuth();
-  const { accessState, locked } = useAccess();
+  const { accessState, locked, overview } = useAccess();
   const resolvedTheme = resolveThemeMode(themeMode);
 
   async function handleLogout() {
@@ -703,18 +857,29 @@ function DashboardLayout({ themeMode, onToggleTheme }) {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          <Link className="brand-logo-link" to="/" aria-label="Go to landing page">
-            <img className="brand-logo" src={resolvedTheme === "dark" ? "/logo-dark.svg" : "/logo.svg"} alt="Metric Mango" width="192" height="64" />
-          </Link>
-          <p>Predict demand. Prevent stockouts. Grow profit.</p>
+        <div className="brand" style={{ flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Link className="brand-logo-link" to="/" aria-label="Go to landing page" style={{ display: 'flex', alignItems: 'center' }}>
+                <img className="brand-logo" src={resolvedTheme === "dark" ? "/logo-dark.svg" : "/logo.svg"} alt="Metric Mango" width="192" height="64" />
+              </Link>
+              {overview?.plan === 'active' && !accessState.trialExpired && !locked ? (
+                <span style={{ background: 'linear-gradient(135deg, #F5C518 0%, #d6a800 100%)', color: '#161616', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '800', letterSpacing: '0.05em', height: 'fit-content', boxShadow: '0 2px 8px rgba(245, 197, 24, 0.25)' }}>
+                  PRO
+                </span>
+              ) : null}
+            </div>
+            <p>Predict demand. Prevent stockouts. Grow profit.</p>
+          </div>
         </div>
         <div className="topbar-right">
           <nav className="nav">
             <NavLink to="/dashboard" end className={({ isActive }) => (isActive ? "active" : "")}>Overview</NavLink>
             <NavLink to="/dashboard/products" className={({ isActive }) => (isActive ? "active" : "")}>Products</NavLink>
             <NavLink to="/dashboard/forecast" className={({ isActive }) => (isActive ? "active" : "")}>Forecast</NavLink>
-            <NavLink to="/dashboard/pricing" className={({ isActive }) => (isActive ? "active" : "")}>Pricing</NavLink>
+            {accessState.trialExpired || locked || !overview?.plan || overview?.plan !== 'active' ? (
+              <NavLink to="/dashboard/pricing" className={({ isActive }) => (isActive ? "active" : "")}>Pricing</NavLink>
+            ) : null}
           </nav>
           <div className="session-meta">
             <span className="session-email">{user?.email || "Signed in"}</span>
@@ -914,6 +1079,7 @@ export default function App() {
         <Route path="products" element={<ProductsPage />} />
         <Route path="forecast" element={<ForecastPage />} />
         <Route path="pricing" element={<PricingPage />} />
+        <Route path="payment/:storeType" element={<PaymentPage />} />
         <Route path="onboarding" element={<OnboardingPage />} />
       </Route>
 
