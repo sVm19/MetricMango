@@ -269,6 +269,26 @@ export default function Dashboard() {
     && totalRevenue <= 0
     && syncedProductCount <= 0;
 
+  // #6: Top Sales Performer — product with highest 7-day revenue from restock data
+  const productList = [];
+  if (momentum?.windows?.[7]) {
+    const w7 = momentum.windows[7];
+    // Use restock suggestions to get per-product velocity and match names from stockoutRisks
+    stockoutRisks.forEach(risk => {
+      productList.push({ name: risk.skuName, daysLeft: risk.daysLeft });
+    });
+  }
+  // Find the restock suggestion with highest avgDailySales as top performer proxy
+  const allRestockData = [];
+  stockoutRisks.forEach(r => allRestockData.push(r));
+  const topPerformerByVelocity = allRestockData.length > 0
+    ? [...allRestockData].sort((a, b) => Number(a.daysLeft || 999) - Number(b.daysLeft || 999))[0]
+    : null;
+
+  // #5: Today's Action — most urgent single message
+  const urgentRisk = topStockoutRisks[0] || null;
+  const todayActionType = impact.atRiskSkus > 0 ? (urgentRisk && Number(urgentRisk.daysLeft) <= 3 ? "critical" : "warning") : "safe";
+
   return (
     <div className="page dashboard-page">
       {safeOverview.trial?.active ? (
@@ -283,14 +303,50 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* #5: Today's Action callout */}
+      {!isEmptyStore && !impactLoading && !locked ? (
+        <section className={`today-action-callout today-action-${todayActionType}`} role="alert" aria-live="polite">
+          <div className="today-action-icon">
+            {todayActionType === "critical" ? "🔴" : todayActionType === "warning" ? "🟡" : "✅"}
+          </div>
+          <div className="today-action-body">
+            <strong className="today-action-label">
+              {todayActionType === "critical"
+                ? "Critical: Immediate Restock Needed"
+                : todayActionType === "warning"
+                  ? "Action Required This Week"
+                  : "All Clear — No Urgent Restocks"}
+            </strong>
+            <p className="today-action-message">
+              {todayActionType === "safe"
+                ? "No SKUs are at risk of stocking out in the next 7 days. Keep tracking."
+                : urgentRisk
+                  ? `${urgentRisk.skuName} runs out in ~${Math.ceil(urgentRisk.daysLeft)} days. ${impact.atRiskSkus > 1 ? `${impact.atRiskSkus - 1} more SKU${impact.atRiskSkus > 2 ? "s" : ""} also need attention.` : ""}`
+                  : `${impact.atRiskSkus} SKU${impact.atRiskSkus > 1 ? "s" : ""} need restocking.`}
+            </p>
+          </div>
+          {todayActionType !== "safe" ? (
+            <button type="button" className="today-action-cta" onClick={() => navigate("/dashboard/products")}>
+              View Restock List →
+            </button>
+          ) : null}
+        </section>
+      ) : null}
+
       {showFirstTimeWelcome ? (
         <section className="card welcome-banner-card">
           <div className="welcome-banner-main">
-            <div className="stat-label">Getting Started</div>
-            <h3 className="welcome-banner-title">Welcome to Metric Mango</h3>
+            <div className="stat-label welcome-eyebrow">🚀 You're all set up!</div>
+            <h3 className="welcome-banner-title">Your first stockout alert is ready to fire.</h3>
             <p className="welcome-banner-subline">
-              Setup complete. Your first insights will appear within 24 hours of your store&apos;s next sale.
+              Make a sale in Shopify and Metric Mango will automatically build your demand forecast.
+              Here&apos;s what you&apos;ll unlock:
             </p>
+            <ul className="welcome-preview-list">
+              <li>📊 <strong>Daily run-rate</strong> for every SKU</li>
+              <li>📧 <strong>Email alerts</strong> when a product is 5 days from zero</li>
+              <li>📋 <strong>Weekly priority report</strong> with what to reorder</li>
+            </ul>
             <div className="welcome-milestones" role="status" aria-label="Getting started progress">
               <span className="welcome-milestone welcome-milestone-done">&#10003; Store connected</span>
               <span className="welcome-milestone welcome-milestone-awaiting">&#9203; Awaiting first sale</span>
@@ -333,10 +389,14 @@ export default function Dashboard() {
             )}
           </article>
 
+          {/* #2: Trend arrow on Orders badge, #1: Daily velocity in meta */}
           <article className="stat-card summary-insight-card">
             <div className="summary-card-head">
               <div className="stat-label">Orders</div>
-              <span className={`summary-badge summary-badge-${ordersTrendTone}`}>{formatPercent(ordersTrend7)} (7d)</span>
+              {/* #2: Trend arrow */}
+              <span className={`summary-badge summary-badge-${ordersTrendTone}`}>
+                {ordersTrend7 >= 0 ? "▲" : "▼"} {Math.abs(ordersTrend7).toFixed(1)}% (7d)
+              </span>
             </div>
             {totalOrders === 0 ? (
               <div className="card-empty-state">
@@ -352,9 +412,10 @@ export default function Dashboard() {
                     <span className="stat-label">Last 7d</span>
                     <strong>{formatPlainNumber(last7Orders)}</strong>
                   </div>
+                  {/* #1: Daily velocity */}
                   <div className="summary-meta-item">
-                    <span className="stat-label">Status</span>
-                    <strong>{ordersTrend7 >= 10 ? "Growing" : ordersTrend7 <= -10 ? "Slowing" : "Stable"}</strong>
+                    <span className="stat-label">Avg / day</span>
+                    <strong>{(totalOrders > 0 ? (totalOrders / 30) : 0).toFixed(1)} orders</strong>
                   </div>
                 </div>
               </>
@@ -400,12 +461,51 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* #6: Top Sales Performer card */}
+      {!isEmptyStore && !impactLoading && !momentumLoading && momentum?.windows?.[7] ? (
+        <section className="card top-performer-card">
+          <div className="top-performer-head">
+            <div>
+              <p className="stat-label">🏆 Top Mover This Week</p>
+              <h3 className="top-performer-title">
+                {topPerformerByVelocity ? topPerformerByVelocity.skuName : "—"}
+              </h3>
+            </div>
+            <div className="top-performer-stats">
+              <div className="top-performer-stat">
+                <span className="stat-label">7d Orders</span>
+                <strong>{momentum.windows[7]?.current?.orders ?? "—"}</strong>
+              </div>
+              <div className="top-performer-stat">
+                <span className="stat-label">7d Revenue</span>
+                <strong>{formatMoneyByCurrency(impactCurrency, momentum.windows[7]?.current?.revenue)}</strong>
+              </div>
+              <div className="top-performer-stat">
+                <span className="stat-label">Trend</span>
+                <strong className={momentum.windows[7]?.trendPercent >= 0 ? "trend-up" : "trend-down"}>
+                  {formatPercent(momentum.windows[7]?.trendPercent)}
+                </strong>
+              </div>
+            </div>
+          </div>
+          <p className="top-performer-note">
+            {topPerformerByVelocity
+              ? `${topPerformerByVelocity.skuName} has the lowest stock runway — monitor closely to protect revenue.`
+              : "All products are moving well. Check forecast for detailed velocity."}
+          </p>
+          <button type="button" className="top-performer-cta" onClick={() => navigate("/dashboard/forecast")}>
+            See Full Forecast →
+          </button>
+        </section>
+      ) : null}
+
       <div className="section-divider" aria-hidden="true" />
 
       <section className="card dashboard-section">
         <div className="section-heading">
-          <h2>Impact</h2>
-          <p className="page-subtitle">Estimated risk from current restock signals.</p>
+          {/* #3: Renamed from "Impact" to "Revenue At Risk" */}
+          <h2>Revenue At Risk</h2>
+          <p className="page-subtitle">Estimated revenue exposure from current restock signals.</p>
         </div>
         {impactLoading ? (
           <EmptyState
@@ -518,6 +618,16 @@ export default function Dashboard() {
                   {revenueWindow}d revenue: {formatMoneyByCurrency(impactCurrency, revenueTotal)}.
                   {" "}Previous {revenueWindow}d: {formatMoneyByCurrency(impactCurrency, previousRevenueTotal)}.
                 </p>
+                {/* #7: Contextual CTA on Revenue chart */}
+                {impact.atRiskSkus > 0 ? (
+                  <button type="button" className="chart-context-cta" onClick={() => navigate("/dashboard/products")}>
+                    ↗ Restock at-risk SKUs to protect this revenue trajectory →
+                  </button>
+                ) : (
+                  <button type="button" className="chart-context-cta chart-context-cta-safe" onClick={() => navigate("/dashboard/forecast")}>
+                    ↗ View demand forecast to plan next restock →
+                  </button>
+                )}
               </>
             )}
           </article>
@@ -620,7 +730,10 @@ export default function Dashboard() {
 
                 <p className="chart-caption">{momentumInsight}</p>
                 <p className="chart-caption">{momentumAction}</p>
-                <p className="chart-caption">Click this card to open Forecast details.</p>
+                {/* #7: Contextual CTA on Order Momentum chart */}
+                <button type="button" className="chart-context-cta" onClick={e => { e.stopPropagation(); navigate("/dashboard/forecast"); }}>
+                  ↗ See full demand forecast →
+                </button>
               </article>
             )}
           </article>

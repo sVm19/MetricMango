@@ -15,9 +15,13 @@ import ProductsPage from "./pages/Products.jsx";
 import ForecastPage from "./pages/Forecast.jsx";
 import PricingPage from "./pages/Pricing.jsx";
 import PaymentPage from "./pages/Payment.jsx";
+import PrivacyPolicy from "./pages/PrivacyPolicy.jsx";
+import TermsOfService from "./pages/TermsOfService.jsx";
+import LeadMagnet from "./components/LeadMagnet.jsx";
 import { useAuth } from "./auth/AuthContext.jsx";
 import { useAccess } from "./access/AccessContext.jsx";
 import { connectShopifyStore, disconnectShopifyStore, getOnboardingStatus } from "./api.js";
+import { useEmbedded } from "./useEmbedded.js";
 
 const THEME_MODE_KEY = "metric-mango.theme-mode";
 const THEME_MODE_SEQUENCE = ["light", "dark"];
@@ -265,6 +269,7 @@ function LandingAuthModal({ open, mode, onClose, onAuthSuccess }) {
 }
 
 function LandingPage({ themeMode, onToggleTheme }) {
+  const navigate = useNavigate();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [selectedStore, setSelectedStore] = useState(null);
   const [authMode, setAuthMode] = useState("signin");
@@ -462,23 +467,23 @@ function LandingPage({ themeMode, onToggleTheme }) {
       <main className="mm-landing-main">
         <section className="mm-hero" id="top">
           <div className="mm-hero-glow" aria-hidden="true" />
-          <span className="mm-hero-badge mm-fade-up mm-delay-1">Built for Shopify operators</span>
-          <h1 className="mm-display mm-fade-up mm-delay-2">Know What to Reorder Before You Run Out.</h1>
+          <span className="mm-hero-badge mm-fade-up mm-delay-1">For Shopify Store Owners</span>
+          <h1 className="mm-display mm-fade-up mm-delay-2">Stop Guessing When to Restock.</h1>
           <p className="mm-fade-up mm-delay-3">
-            Metric Mango gives your team restock priorities, demand forecasts, and weekly action plans without dashboard clutter.
+            Get automated low-stock email alerts and simple demand forecasts. Never let a bestseller go out of stock or manage another complex inventory spreadsheet again.
           </p>
           <div className="mm-feature-pills mm-fade-up mm-delay-4">
-            <span>7/14/30-Day Forecasting</span>
-            <span>Restock Signals</span>
+            <span>7/14/30-Day Run Rates</span>
+            <span>Active Restock Alerts</span>
             <span>Weekly Priority Reports</span>
           </div>
           <div className="mm-hero-ctas mm-fade-up mm-delay-5">
             <button type="button" className="mm-cta mm-cta-primary" onClick={() => openAuthModal("signup")}>
-              7 day free trial
+              Start My Free Trial
             </button>
           </div>
           <p className="mm-trust-whisper mm-fade-up mm-delay-6">
-            <strong><i>"No sales call. No demo. No 47-page setup guide. Just plug in and go."</i></strong>
+            <strong><i>"Just plug in and go. The cheapest insurance policy against lost revenue."</i></strong>
           </p>
           <button
             id="how-it-works-btn"
@@ -495,6 +500,12 @@ function LandingPage({ themeMode, onToggleTheme }) {
             <p className="mm-how-eyebrow">How It Works</p>
             <h2>From install to your first stockout alert in under 2 minutes.</h2>
             <p className="mm-how-subline">No demo call. No setup wizard. No waiting for someone to onboard you.</p>
+
+            <div className="mm-about-section-col">
+              <h4>Legal</h4>
+              <Link to="/privacy-policy" className="mm-about-section-link">Privacy Policy</Link>
+              <Link to="/terms-of-service" className="mm-about-section-link">Terms of Service</Link>
+            </div>
 
             <div className="mm-how-flow">
               <article className="mm-how-step">
@@ -555,8 +566,8 @@ function LandingPage({ themeMode, onToggleTheme }) {
             </div>
 
             <div className="mm-how-cta-wrap">
-              <button type="button" className="mm-cta mm-cta-secondary" onClick={() => openAuthModal("signin")}>
-                Sign In / Sign Up
+              <button type="button" className="mm-cta mm-cta-secondary" onClick={() => openAuthModal("signup")}>
+                Start My Free Trial
               </button>
               <p>No credit card required. Cancel anytime.</p>
               <p>Join stores already using Metric Mango to prevent stockouts.</p>
@@ -579,23 +590,25 @@ function LandingPage({ themeMode, onToggleTheme }) {
           </article>
         </section>
 
+        <LeadMagnet />
+
         <section className="mm-features" id="features">
           <div className="mm-section-head">
-            <p className="mm-kicker">What You Get</p>
-            <h2>Modern inventory intelligence, built for execution.</h2>
+            <p className="mm-kicker">The End of Stockout Anxiety</p>
+            <h2>Everything you need to order the right inventory at the right time.</h2>
           </div>
           <div className="mm-feature-grid">
             <article className="mm-feature-card">
               <h3>Demand Forecasts</h3>
-              <p>Track momentum across 7, 14, and 30 days before your best sellers run dry.</p>
+              <p>See your exact 7, 14, and 30-day run rates before your bestsellers run dry.</p>
             </article>
             <article className="mm-feature-card">
               <h3>Restock Priorities</h3>
-              <p>See exactly which SKUs need action now, with expected demand versus stock on hand.</p>
+              <p>Know exactly which SKUs need reordering today based on actual sales momentum.</p>
             </article>
             <article className="mm-feature-card">
-              <h3>Weekly Action Reports</h3>
-              <p>Give operations and buying teams one clean list of what to reorder and what to defer.</p>
+              <h3>Active Email Alerts</h3>
+              <p>Get proactive email warnings when a product is 5 days from hitting zero. No login required.</p>
             </article>
           </div>
         </section>
@@ -825,6 +838,8 @@ function DashboardLayout({ themeMode, onToggleTheme }) {
   const { accessState, locked, overview } = useAccess();
   const resolvedTheme = resolveThemeMode(themeMode);
 
+  const { isEmbedded } = useEmbedded();
+
   async function handleLogout() {
     await logout();
     navigate("/signin", { replace: true });
@@ -843,47 +858,49 @@ function DashboardLayout({ themeMode, onToggleTheme }) {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand" style={{ flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Link className="brand-logo-link" to="/" aria-label="Go to landing page" style={{ display: 'flex', alignItems: 'center' }}>
-                <img className="brand-logo" src={resolvedTheme === "dark" ? "/logo-dark.svg" : "/logo.svg"} alt="Metric Mango" width="192" height="64" />
-              </Link>
-              {overview?.plan === 'active' && !accessState.trialExpired && !locked ? (
-                <span style={{ background: 'linear-gradient(135deg, #F5C518 0%, #d6a800 100%)', color: '#161616', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '800', letterSpacing: '0.05em', height: 'fit-content', boxShadow: '0 2px 8px rgba(245, 197, 24, 0.25)' }}>
-                  PRO
-                </span>
-              ) : null}
+      {!isEmbedded && (
+        <header className="topbar">
+          <div className="brand" style={{ flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Link className="brand-logo-link" to="/" aria-label="Go to landing page" style={{ display: 'flex', alignItems: 'center' }}>
+                  <img className="brand-logo" src={resolvedTheme === "dark" ? "/logo-dark.svg" : "/logo.svg"} alt="Metric Mango" width="192" height="64" />
+                </Link>
+                {overview?.plan === 'active' && !accessState.trialExpired && !locked ? (
+                  <span style={{ background: 'linear-gradient(135deg, #F5C518 0%, #d6a800 100%)', color: '#161616', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '800', letterSpacing: '0.05em', height: 'fit-content', boxShadow: '0 2px 8px rgba(245, 197, 24, 0.25)' }}>
+                    PRO
+                  </span>
+                ) : null}
+              </div>
+              <p>Predict demand. Prevent stockouts. Grow profit.</p>
             </div>
-            <p>Predict demand. Prevent stockouts. Grow profit.</p>
           </div>
-        </div>
-        <div className="topbar-right">
-          <nav className="nav">
-            <NavLink to="/dashboard" end className={({ isActive }) => (isActive ? "active" : "")}>Overview</NavLink>
-            <NavLink to="/dashboard/products" className={({ isActive }) => (isActive ? "active" : "")}>Products</NavLink>
-            <NavLink to="/dashboard/forecast" className={({ isActive }) => (isActive ? "active" : "")}>Forecast</NavLink>
-            {accessState.trialExpired || locked || !overview?.plan || overview?.plan !== 'active' ? (
-              <NavLink to="/dashboard/pricing" className={({ isActive }) => (isActive ? "active" : "")}>Pricing</NavLink>
-            ) : null}
-          </nav>
-          <div className="session-meta">
-            <span className="session-email">{user?.email || "Signed in"}</span>
-            {accessState.trialExpired || locked ? <span className="lock-pill">Locked</span> : null}
-            <button
-              type="button"
-              className="theme-toggle-btn theme-toggle-icon-btn"
-              onClick={onToggleTheme}
-              title={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              aria-label={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            >
-              {resolvedTheme === "dark" ? <FiMoon aria-hidden="true" /> : <FiSun aria-hidden="true" />}
-            </button>
-            <Button type="button" variant="secondary" onClick={handleLogout}>Logout</Button>
+          <div className="topbar-right">
+            <nav className="nav">
+              <NavLink to="/dashboard" end className={({ isActive }) => (isActive ? "active" : "")}>Overview</NavLink>
+              <NavLink to="/dashboard/products" className={({ isActive }) => (isActive ? "active" : "")}>Products</NavLink>
+              <NavLink to="/dashboard/forecast" className={({ isActive }) => (isActive ? "active" : "")}>Forecast</NavLink>
+              {accessState.trialExpired || locked || !overview?.plan || overview?.plan !== 'active' ? (
+                <NavLink to="/dashboard/pricing" className={({ isActive }) => (isActive ? "active" : "")}>Pricing</NavLink>
+              ) : null}
+            </nav>
+            <div className="session-meta">
+              <span className="session-email">{user?.email || "Signed in"}</span>
+              {accessState.trialExpired || locked ? <span className="lock-pill">Locked</span> : null}
+              <button
+                type="button"
+                className="theme-toggle-btn theme-toggle-icon-btn"
+                onClick={onToggleTheme}
+                title={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                aria-label={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              >
+                {resolvedTheme === "dark" ? <FiMoon aria-hidden="true" /> : <FiSun aria-hidden="true" />}
+              </button>
+              <Button type="button" variant="secondary" onClick={handleLogout}>Logout</Button>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
       <main className="main">
         {sessionExpired ? (
           <div className="upgrade-banner" role="alert">
@@ -1069,6 +1086,36 @@ export default function App() {
         <Route path="payment/:storeType" element={<PaymentPage />} />
         <Route path="onboarding" element={<OnboardingPage />} />
       </Route>
+      <Route path="/privacy-policy" element={
+        <PublicOnlyRoute>
+          <div className="lp-shell">
+            <header className="topbar">
+              <div className="topbar-left">
+                <Link to="/" className="brand brand-badge">
+                  <img src="/logo.svg" alt="Metric Mango Logo" className="brand-logo" width="28" height="28" />
+                  <span className="brand-name">Metric Mango</span>
+                </Link>
+              </div>
+            </header>
+            <PrivacyPolicy />
+          </div>
+        </PublicOnlyRoute>
+      } />
+      <Route path="/terms-of-service" element={
+        <PublicOnlyRoute>
+          <div className="lp-shell">
+            <header className="topbar">
+              <div className="topbar-left">
+                <Link to="/" className="brand brand-badge">
+                  <img src="/logo.svg" alt="Metric Mango Logo" className="brand-logo" width="28" height="28" />
+                  <span className="brand-name">Metric Mango</span>
+                </Link>
+              </div>
+            </header>
+            <TermsOfService />
+          </div>
+        </PublicOnlyRoute>
+      } />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -52,3 +52,15 @@ build/Release
 
 .vercel
 .env*.local
+
+# Agent Skills and Marketing Context
+.agents/
+.agent/
+_agents/
+_agent/
+product-marketing-context.md
+marketing_plan.md
+cold_email_sequence.md
+launch_strategy.md
+content_strategy.md
+shopify_app_listing.md

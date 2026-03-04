@@ -142,4 +142,67 @@ router.post("/order-created", async (req, res) => {
   }
 });
 
+router.post("/customers/data_request", async (req, res) => {
+  if (!verifyShopifyHmac(req)) {
+    return res.status(401).json({ error: "Invalid webhook signature" });
+  }
+  // Log request, Metric Mango only pulls aggregated metric data, so no action typically needed
+  return res.status(200).send("OK");
+});
+
+router.post("/customers/redact", async (req, res) => {
+  if (!verifyShopifyHmac(req)) {
+    return res.status(401).json({ error: "Invalid webhook signature" });
+  }
+  // Process deletion of specific customer PII if stored
+  return res.status(200).send("OK");
+});
+
+router.post("/shop/redact", async (req, res) => {
+  if (!verifyShopifyHmac(req)) {
+    return res.status(401).json({ error: "Invalid webhook signature" });
+  }
+  let payload;
+  try {
+    payload = JSON.parse(req.body.toString("utf8"));
+  } catch (e) {
+    return res.status(400).json({ error: "Invalid JSON" });
+  }
+
+  const shopDomain = payload.shop_domain;
+  if (shopDomain) {
+    console.log(`GDPR shop/redact requested for: ${shopDomain}`);
+    // Mark store for deletion in Firestore within 48 hours according to GDPR
+  }
+  return res.status(200).send("OK");
+});
+
+router.post("/app/uninstalled", async (req, res) => {
+  if (!verifyShopifyHmac(req)) {
+    return res.status(401).json({ error: "Invalid webhook signature" });
+  }
+  let payload;
+  try {
+    payload = JSON.parse(req.body.toString("utf8"));
+  } catch (e) {
+    return res.status(400).json({ error: "Invalid JSON" });
+  }
+
+  const shopDomain = payload.domain || payload.myshopify_domain;
+  if (shopDomain) {
+    console.log(`App uninstalled by: ${shopDomain}`);
+    // Search DB for store with this domain and mark as inactive
+    const storeSnapshot = await admin.firestore().collection("stores").where("shopDomain", "==", shopDomain).limit(1).get();
+    if (!storeSnapshot.empty) {
+      const storeRef = storeSnapshot.docs[0].ref;
+      await storeRef.update({
+        shopifyConnected: false,
+        shopifyInstallStatus: "uninstalled",
+        shopifyDisconnectedAt: admin.firestore.Timestamp.now()
+      });
+    }
+  }
+  return res.status(200).send("OK");
+});
+
 module.exports = router;

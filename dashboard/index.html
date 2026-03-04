@@ -8,10 +8,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;600;700;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;600;700;900&family=Barlow:wght@300;400;500;600&display=swap"
+    rel="stylesheet">
   <meta name="description"
     content="Metric Mango gives Shopify operators restock priorities, demand forecasts, and weekly action plans. Prevent stockouts before they burn revenue." />
   <meta name="theme-color" content="#0D0D0D" />
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('host') || urlParams.get('shop')) {
+      const meta = document.createElement('meta');
+      meta.name = 'shopify-api-key';
+      meta.content = 'c34b6bc7dbc6d9afdd64cbc7a4e9a6f2';
+      document.head.appendChild(meta);
+      const appBridge = document.createElement('script');
+      appBridge.src = 'https://cdn.shopify.com/shopifycloud/app-bridge.js';
+      document.head.appendChild(appBridge);
+    }
+  </script>
   <title>Metric Mango — Shopify Demand Forecasting & Restock Alerts</title>
 </head>
 

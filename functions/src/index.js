@@ -19,10 +19,11 @@ const { evaluateProviderGuard, getEnabledProviders } = require("./services/billi
 const { createRazorpaySubscription } = require("./services/razorpayService");
 // PayPal: subscription checkout service.
 const { createPayPalSubscription } = require("./services/paypalService");
-const { getBillingConfig } = require("./utils/runtimeConfig");
+const { getBillingConfig, getShopifyConfig, getOnboardingConfig } = require("./utils/runtimeConfig");
 const { createLemonSqueezyCheckout } = require("./services/lemonSqueezyService");
 const { PRICING } = require("./config/pricing");
-const { getShopifyConfig, getOnboardingConfig } = require("./utils/runtimeConfig");
+const { runDailyDripCampaign } = require("./services/dripCampaignService");
+const { processNewLead } = require("./services/leadService");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -819,6 +820,21 @@ app.post("/onboarding/complete", apiKeyGate, apiRateLimit, async (req, res) => {
   }
 });
 
+// Lead Magnet endpoint
+app.post("/api/leads", apiRateLimit, async (req, res) => {
+  try {
+    const { storeName, email } = req.body;
+    if (!storeName || !email) {
+      return res.status(400).json({ error: "Store name and email are required" });
+    }
+    await processNewLead(storeName, email);
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("Lead capture error:", error);
+    return res.status(500).json({ error: "Failed to process lead." });
+  }
+});
+
 app.post("/onboarding/reset", async (req, res) => {
   try {
     const firebaseUser = await getFirebaseUserFromRequest(req);
@@ -857,7 +873,7 @@ app.post("/onboarding/reset", async (req, res) => {
 
 const SHOPIFY_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const SHOPIFY_TOKEN_ENCRYPTION_ALGORITHM = "aes-256-gcm";
-const SHOPIFY_REQUIRED_WEBHOOK_TOPICS = ["orders/create", "orders/updated", "orders/cancelled"];
+const SHOPIFY_REQUIRED_WEBHOOK_TOPICS = ["orders/create", "orders/updated", "orders/cancelled", "app/uninstalled"];
 const SHOPIFY_SHOP_DOMAIN_REGEX = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\.myshopify\.com$/;
 const SHOPIFY_STORE_NAME_REGEX = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)$/;
 
@@ -2055,5 +2071,28 @@ exports.onAuthUserDelete = functions.auth.user().onDelete(async user => {
   });
   return null;
 });
+
+// TEMPORARY DEBUG ENDPOINT
+app.get("/debug/drip", async (req, res) => {
+  try {
+    const result = await runDailyDripCampaign();
+    res.json({ ok: true, result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Daily Drip Campaign: Runs at 2:00 PM UTC (which is 7:30 PM IST)
+exports.dailyEmailDrip = functions.pubsub.schedule("0 14 * * *")
+  .timeZone("UTC")
+  .onRun(async (context) => {
+    try {
+      await runDailyDripCampaign();
+      console.info("Daily email drip campaign completed successfully.");
+    } catch (error) {
+      console.error("Critical error running daily email drip campaign:", error);
+    }
+    return null;
+  });
 
 exports.api = functions.https.onRequest(app);
