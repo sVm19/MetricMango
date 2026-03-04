@@ -26,6 +26,8 @@ function normalizeBillingProvider(value) {
   const normalized = String(value || "").toLowerCase();
   if (normalized === "razorpay") return "razorpay";
   if (normalized === "lemonsqueezy") return "lemonsqueezy";
+  // PayPal: alternative global payment provider (opt-in via checkout).
+  if (normalized === "paypal") return "paypal";
   return "";
 }
 

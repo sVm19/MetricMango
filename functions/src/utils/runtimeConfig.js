@@ -24,6 +24,14 @@ function getBillingConfig() {
       keySecret: getSecret("razorpay.key_secret", "RAZORPAY_KEY_SECRET"),
       webhookSecret: getSecret("razorpay.webhook_secret", "RAZORPAY_WEBHOOK_SECRET"),
       planId: getSecret("razorpay.plan_id", "RAZORPAY_PLAN_ID")
+    },
+    // PayPal: alternative global payment provider.
+    paypal: {
+      clientId: getSecret("paypal.client_id", "PAYPAL_CLIENT_ID"),
+      clientSecret: getSecret("paypal.client_secret", "PAYPAL_CLIENT_SECRET"),
+      webhookId: getSecret("paypal.webhook_id", "PAYPAL_WEBHOOK_ID"),
+      planId: getSecret("paypal.plan_id", "PAYPAL_PLAN_ID"),
+      apiBase: getSecret("paypal.api_base", "PAYPAL_API_BASE") || "https://api-m.sandbox.paypal.com"
     }
   };
 }
@@ -31,7 +39,9 @@ function getBillingConfig() {
 function getBillingFlags() {
   return {
     razorpayEnabled: getBooleanFlag("billing.razorpay_enabled", "BILLING_RAZORPAY_ENABLED"),
-    lemonSqueezyEnabled: getBooleanFlag("billing.lemon_squeezy_enabled", "BILLING_LEMON_SQUEEZY_ENABLED")
+    lemonSqueezyEnabled: getBooleanFlag("billing.lemon_squeezy_enabled", "BILLING_LEMON_SQUEEZY_ENABLED"),
+    // PayPal: opt-in alternative checkout for global users.
+    paypalEnabled: getBooleanFlag("billing.paypal_enabled", "BILLING_PAYPAL_ENABLED")
   };
 }
 

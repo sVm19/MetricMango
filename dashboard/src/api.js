@@ -212,12 +212,15 @@ async function requestDummy(path, options = {}) {
       storeProvider: "razorpay",
       providers: [
         { provider: "razorpay", enabled: true },
-        { provider: "lemonsqueezy", enabled: true }
+        { provider: "lemonsqueezy", enabled: true },
+        { provider: "paypal", enabled: true }
       ],
-      availableProviders: ["razorpay", "lemonsqueezy"]
+      availableProviders: ["razorpay", "lemonsqueezy", "paypal"]
     };
   }
   if (pathname === "/billing/upgrade") return { provider: "razorpay", checkoutUrl: "https://example.com/checkout" };
+  // PayPal: simulated checkout URL for dummy mode.
+  if (pathname === "/billing/paypal/subscribe") return { provider: "paypal", checkoutUrl: "https://www.sandbox.paypal.com/webapps/billing/subscriptions?ba_token=DUMMY" };
   if (pathname === "/export/orders") return parseJson ? { csv: getDummyCsv("orders") } : getDummyCsv("orders");
   if (pathname === "/export/products") return parseJson ? { csv: getDummyCsv("products") } : getDummyCsv("products");
 
@@ -384,6 +387,21 @@ export function getRestockSuggestions() {
 
 export function getPricing() {
   return request("/pricing");
+}
+
+export function getBillingUpgradeUrl(redirectUrl) {
+  const qs = redirectUrl
+    ? `?json=1&redirectUrl=${encodeURIComponent(redirectUrl)}`
+    : "?json=1";
+  return request(`/billing/upgrade${qs}`, { method: "POST" });
+}
+
+// PayPal: dedicated checkout endpoint for PayPal subscriptions.
+export function getPayPalCheckoutUrl(redirectUrl) {
+  const qs = redirectUrl
+    ? `?json=1&redirectUrl=${encodeURIComponent(redirectUrl)}`
+    : "?json=1";
+  return request(`/billing/paypal/subscribe${qs}`, { method: "POST" });
 }
 
 function downloadBlob(content, filename, mimeType) {

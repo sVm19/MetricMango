@@ -9,7 +9,7 @@ const router = express.Router();
 
 function verifyRazorpaySignature(req) {
   // Use Razorpay key secret as requested (shared secret for webhook verification).
-  const secret = getBillingConfig().razorpay.keySecret;
+  const secret = getBillingConfig().razorpay.webhookSecret;
   if (!secret) {
     // TODO: Consider failing startup if webhook secret is missing.
     throw new Error("Missing RAZORPAY_KEY_SECRET");

@@ -7,6 +7,8 @@ const crypto = require("crypto");
 const shopifyWebhook = require("./routes/shopifyWebhook");
 const lemonSqueezyWebhook = require("./routes/lemonSqueezyWebhook");
 const razorpayWebhook = require("./routes/razorpayWebhook");
+// PayPal: alternative global payment provider webhook handler.
+const paypalWebhook = require("./routes/paypalWebhook");
 const resendWebhook = require("./routes/resendWebhook");
 const dashboard = require("./routes/dashboard");
 const forecast = require("./routes/forecast");
@@ -15,6 +17,8 @@ const { sendLowStockAlertsForStore } = require("./services/lowStockAlertService"
 const { decideBillingProvider, normalizeBillingProvider } = require("./services/billingProviderService");
 const { evaluateProviderGuard, getEnabledProviders } = require("./services/billingGuardService");
 const { createRazorpaySubscription } = require("./services/razorpayService");
+// PayPal: subscription checkout service.
+const { createPayPalSubscription } = require("./services/paypalService");
 const { getBillingConfig } = require("./utils/runtimeConfig");
 const { createLemonSqueezyCheckout } = require("./services/lemonSqueezyService");
 const { PRICING } = require("./config/pricing");
@@ -682,6 +686,8 @@ app.use("/webhook/shopify", express.raw({ type: "application/json", limit: "1mb"
 app.use("/webhook/lemonsqueezy", express.raw({ type: "application/json", limit: "1mb" }), webhookRateLimit, lemonSqueezyWebhook);
 // Use raw body for Razorpay signature verification (must run before JSON parsing).
 app.use("/webhook/razorpay", express.raw({ type: "application/json", limit: "1mb" }), webhookRateLimit, razorpayWebhook);
+// Use raw body for PayPal webhook signature verification (must run before JSON parsing).
+app.use("/webhook/paypal", express.raw({ type: "application/json", limit: "1mb" }), webhookRateLimit, paypalWebhook);
 // Use raw body for Resend signature verification
 app.use("/webhook/resend", express.raw({ type: "application/json", limit: "1mb" }), webhookRateLimit, resendWebhook);
 
@@ -1650,7 +1656,11 @@ async function createUpgradeCheckoutForStore({ storeId, store, redirectUrl = "" 
   }
 
   if (provider === "lemonsqueezy") {
-    const variantId = String(store?.lemonSqueezyVariantId || "").trim();
+    const variantId = String(
+      store?.lemonSqueezyVariantId
+      || process.env.LEMON_SQUEEZY_VARIANT_ID
+      || ""
+    ).trim();
     if (!variantId) {
       throw createHttpError(400, "Missing lemonSqueezyVariantId for store");
     }
@@ -1672,6 +1682,37 @@ async function createUpgradeCheckoutForStore({ storeId, store, redirectUrl = "" 
     return { provider, checkoutUrl };
   }
 
+  // PayPal: alternative checkout for global users.
+  if (provider === "paypal") {
+    const planId = String(
+      store?.paypalPlanId
+      || getBillingConfig().paypal.planId
+      || ""
+    ).trim();
+    if (!planId) {
+      throw createHttpError(400, "Missing PayPal planId in config");
+    }
+
+    const result = await createPayPalSubscription({
+      planId,
+      storeId,
+      returnUrl: redirectUrl || undefined,
+      cancelUrl: redirectUrl || undefined
+    });
+
+    await admin.firestore().collection("stores").doc(String(storeId)).set({
+      paypalSubscriptionId: result.subscriptionId || "",
+      paypalStatus: result.status || "APPROVAL_PENDING"
+    }, { merge: true });
+
+    const checkoutUrl = String(result.approvalUrl || "").trim();
+    if (!checkoutUrl) {
+      throw createHttpError(500, "Missing approval URL from PayPal");
+    }
+
+    return { provider, checkoutUrl };
+  }
+
   throw createHttpError(400, "Unsupported billing provider");
 }
 
@@ -1681,7 +1722,9 @@ app.get("/billing/providers", apiKeyGate, apiRateLimit, (req, res) => {
     const enabledProviders = getEnabledProviders();
     const providers = [
       { provider: "razorpay", enabled: Boolean(enabledProviders.razorpay) },
-      { provider: "lemonsqueezy", enabled: Boolean(enabledProviders.lemonsqueezy) }
+      { provider: "lemonsqueezy", enabled: Boolean(enabledProviders.lemonsqueezy) },
+      // PayPal: opt-in alternative for global users.
+      { provider: "paypal", enabled: Boolean(enabledProviders.paypal) }
     ];
     return res.json({
       storeProvider,
@@ -1804,7 +1847,11 @@ app.get("/billing/lemonsqueezy/checkout", apiKeyGate, apiRateLimit, async (req, 
       return res.status(Number(error.statusCode) || 400).json({ error: error.message });
     }
 
-    const variantId = String(req.store?.lemonSqueezyVariantId || "").trim();
+    const variantId = String(
+      req.store?.lemonSqueezyVariantId
+      || process.env.LEMON_SQUEEZY_VARIANT_ID
+      || ""
+    ).trim();
     if (!variantId) {
       return res.status(400).json({ error: "Missing lemonSqueezyVariantId for store" });
     }
@@ -1831,6 +1878,67 @@ app.get("/billing/lemonsqueezy/checkout", apiKeyGate, apiRateLimit, async (req, 
   } catch (error) {
     console.error("Lemon Squeezy checkout error:", error);
     return res.status(500).json({ error: "Failed to create Lemon Squeezy checkout" });
+  }
+});
+
+// PayPal: dedicated subscribe endpoint for global users.
+// This allows frontend to explicitly request a PayPal checkout
+// regardless of the store's default billing provider.
+app.post("/billing/paypal/subscribe", apiKeyGate, apiRateLimit, async (req, res) => {
+  try {
+    const guardResult = evaluateProviderGuard({
+      provider: "paypal",
+      store: req.store,
+      action: "checkout",
+      // Do NOT require store provider match — PayPal is an opt-in alternative.
+      requireStoreProviderMatch: false
+    });
+    if (!guardResult.ok) {
+      const error = buildProviderGuardError({ ...guardResult, provider: "paypal" });
+      console.warn("Billing guard blocked PayPal subscribe", {
+        storeId: req.storeId,
+        provider: "paypal",
+        reason: guardResult.reason
+      });
+      return res.status(Number(error.statusCode) || 400).json({ error: error.message });
+    }
+
+    const planId = String(
+      req.store?.paypalPlanId
+      || getBillingConfig().paypal.planId
+      || ""
+    ).trim();
+    if (!planId) {
+      return res.status(400).json({ error: "Missing PayPal planId in config" });
+    }
+
+    const redirectUrl = req.query.redirectUrl ? String(req.query.redirectUrl) : "";
+    const result = await createPayPalSubscription({
+      planId,
+      storeId: req.storeId,
+      returnUrl: redirectUrl || undefined,
+      cancelUrl: redirectUrl || undefined
+    });
+
+    // Save PayPal subscription ID to store for webhook resolution.
+    await admin.firestore().collection("stores").doc(String(req.storeId)).set({
+      paypalSubscriptionId: result.subscriptionId || "",
+      paypalStatus: result.status || "APPROVAL_PENDING"
+    }, { merge: true });
+
+    const checkoutUrl = String(result.approvalUrl || "").trim();
+    if (!checkoutUrl) {
+      return res.status(500).json({ error: "Missing approval URL from PayPal" });
+    }
+
+    const wantsJson = String(req.query.json || "").toLowerCase() === "1";
+    if (wantsJson) {
+      return res.json({ provider: "paypal", checkoutUrl });
+    }
+    return res.redirect(checkoutUrl);
+  } catch (error) {
+    console.error("PayPal subscribe error:", error);
+    return res.status(500).json({ error: "Failed to create PayPal subscription" });
   }
 });
 

@@ -5,7 +5,9 @@ function getEnabledProviders() {
   const flags = getBillingFlags();
   return {
     razorpay: Boolean(flags.razorpayEnabled),
-    lemonsqueezy: Boolean(flags.lemonSqueezyEnabled)
+    lemonsqueezy: Boolean(flags.lemonSqueezyEnabled),
+    // PayPal: opt-in alternative for global users.
+    paypal: Boolean(flags.paypalEnabled)
   };
 }
 
@@ -32,6 +34,18 @@ function hasRequiredSecrets(provider, action = "checkout") {
       String(billingConfig.lemonSqueezy.apiKey || "").trim()
       && String(billingConfig.lemonSqueezy.storeId || "").trim()
     );
+  }
+
+  // PayPal: requires clientId + clientSecret for API auth; webhookId for verification.
+  if (provider === "paypal") {
+    const hasAuth = Boolean(
+      String(billingConfig.paypal.clientId || "").trim()
+      && String(billingConfig.paypal.clientSecret || "").trim()
+    );
+    if (action === "webhook") {
+      return hasAuth && Boolean(String(billingConfig.paypal.webhookId || "").trim());
+    }
+    return hasAuth;
   }
 
   return false;

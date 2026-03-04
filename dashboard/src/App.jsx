@@ -403,14 +403,7 @@ function LandingPage({ themeMode, onToggleTheme }) {
               </button>
               {isAboutOpen ? (
                 <div id="about-dropdown" className="mm-about-dropdown">
-                  <div className="mm-about-identity">
-                    <div className="mm-about-avatar" aria-hidden="true">SK</div>
-                    <div>
-                      <p className="mm-about-name">Shubham Kumar</p>
-                      <p className="mm-about-title">Founder &amp; Builder</p>
-                    </div>
-                  </div>
-                  <hr className="mm-about-divider" />
+                  {/* Founder identity removed as requested */}
                   <p className="mm-about-blurb">
                     Built Metric Mango to solve the exact inventory problem we faced
                     running our own Shopify store. No VC funding. No enterprise pricing.
@@ -635,13 +628,7 @@ function LandingPage({ themeMode, onToggleTheme }) {
           <section className="mm-about-section" id="about-us">
             <p className="mm-kicker">About Us</p>
             <h2>Built by a store owner, for store owners.</h2>
-            <div className="mm-about-section-identity">
-              <div className="mm-about-section-avatar" aria-hidden="true">SK</div>
-              <div>
-                <p className="mm-about-section-name">Shubham Kumar</p>
-                <p className="mm-about-section-role">Founder &amp; Builder</p>
-              </div>
-            </div>
+            {/* Founder identity removed as requested */}
             <p className="mm-about-section-blurb">
               Built Metric Mango to solve the exact inventory problem we faced running our own Shopify store.
               No VC funding. No enterprise pricing. Just a tool that works.
