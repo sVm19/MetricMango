@@ -4,17 +4,17 @@
   --font-body: 'Barlow', sans-serif;
 
   /* Color palette */
-  --color-bg: #0f0f0f;
-  --color-surface: #171717;
-  --color-surface-2: #1f1f1f;
+  --color-bg: #111827;
+  --color-surface: #1F2937;
+  --color-surface-2: #374151;
   --color-border: #2f2f2f;
   --color-border-strong: #3a3a3a;
   --color-accent: #2ECC71;
   --color-accent-strong: #58D68D;
-  --color-text: #f5f5f5;
+  --color-text: #F9FAFB;
   --color-text-muted: #c4c4c4;
-  --color-danger: #dc2626;
-  --color-danger-strong: #ef4444;
+  --color-danger: #F87171;
+  --color-danger-strong: #EF4444;
 
   /* 8px spacing system */
   --space-1: 8px;
@@ -50,17 +50,17 @@
 }
 
 [data-theme="light"] {
-  --color-bg: #f5f7fb;
-  --color-surface: #ffffff;
-  --color-surface-2: #f2f5fb;
+  --color-bg: #F9FAFB;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F3F4F6;
   --color-border: #d8deea;
   --color-border-strong: #bcc7d8;
   --color-accent: #27AE60;
   --color-accent-strong: #2ECC71;
   --color-text: #111827;
   --color-text-muted: #475569;
-  --color-danger: #dc2626;
-  --color-danger-strong: #ef4444;
+  --color-danger: #F87171;
+  --color-danger-strong: #EF4444;
   --shadow-card: 0 8px 20px rgba(17, 24, 39, 0.08);
   --shadow-elevated: 0 12px 24px rgba(17, 24, 39, 0.1);
   --shadow-glow-soft: 0 0 12px rgba(39, 174, 96, 0.14);
@@ -271,10 +271,33 @@ button {
   cursor: pointer;
   white-space: nowrap;
   transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
+  position: relative;
+  overflow: hidden;
 }
 
 .btn:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(46, 204, 113, 0.4);
+}
+
+.btn:active::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  width: 120px;
+  height: 120px;
+  background: rgba(255, 255, 255, 0.3);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  animation: ripple 0.6s linear;
+}
+
+@keyframes ripple {
+  to {
+    transform: translate(-50%, -50%) scale(4);
+    opacity: 0;
+  }
 }
 
 .btn-primary {
@@ -5622,7 +5645,7 @@ body {
   gap: 12px;
 }
 
-.retention-status-card > div {
+.retention-status-card>div {
   flex: 1;
 }
 
@@ -5648,6 +5671,7 @@ body {
 }
 
 @media (max-width: 960px) {
+
   .supplier-directory-grid,
   .packaging-grid,
   .sku-analytics-lists,
@@ -5661,6 +5685,7 @@ body {
 }
 
 @media (max-width: 767px) {
+
   .supplier-card-head,
   .purchase-order-head,
   .retention-offer-card,
