@@ -1,116 +1,118 @@
 const admin = require("firebase-admin");
-const { dateRangeKeys, toDateKey } = require("../utils/dateUtils");
 const { sendEmail } = require("./emailService");
+const { resolveInventorySettings } = require("./inventorySettingsService");
+const { computeRestockSuggestions, sortRestockItems } = require("./restockService");
+const { toDateKey } = require("../utils/dateUtils");
 
-function averageForRange(dailyMap, rangeKeys) {
-  if (!rangeKeys.length) return 0;
-  let total = 0;
-  for (const key of rangeKeys) {
-    const value = Number(dailyMap[key] || 0);
-    total += Number.isFinite(value) && value > 0 ? value : 0;
-  }
-  return total / rangeKeys.length;
+function isLowStockSuggestion(item, settings) {
+  const daysThreshold = Number(settings.lowStockThresholdDays || 0);
+  const unitsThreshold = settings.lowStockThresholdUnits;
+  const daysTriggered = Number.isFinite(Number(item.daysUntilStockout))
+    && Number(item.daysUntilStockout) <= daysThreshold;
+  const unitsTriggered = unitsThreshold !== null
+    && unitsThreshold !== undefined
+    && Number(item.currentStock || 0) <= Number(unitsThreshold);
+  return daysTriggered || unitsTriggered;
 }
 
-function formatDays(value) {
-  if (!Number.isFinite(value)) return "N/A";
-  return value.toFixed(1);
+function buildLowStockDigestText(storeName, settings, items) {
+  const intro = [
+    `Hi ${storeName || "there"},`,
+    "",
+    "These products need attention based on your current inventory alert settings:",
+    ""
+  ];
+
+  const lines = items.map((item, index) => (
+    `${index + 1}. ${item.name || item.productId}
+Current stock: ${item.currentStock}
+Stock cover: ${Number.isFinite(item.daysUntilStockout) ? `${item.daysUntilStockout} days` : "No sales velocity"}
+Recommended reorder: ${item.recommendedReorderQty}
+Revenue at risk: ${item.revenueAtRisk}`
+  ));
+
+  const footer = [
+    "",
+    `Alert frequency: ${settings.alertFrequency}`,
+    `Threshold days: ${settings.lowStockThresholdDays}`,
+    settings.lowStockThresholdUnits === null ? "Threshold units: off" : `Threshold units: ${settings.lowStockThresholdUnits}`,
+    "",
+    "Open Metric Mango to review the full restock list."
+  ];
+
+  return [...intro, ...lines, ...footer].join("\n");
 }
 
-async function sendLowStockAlertsForStore(storeId, thresholdDays = 5) {
-  if (!storeId) {
-    throw new Error("Missing storeId");
-  }
-
+async function sendLowStockDigestForStore(storeId, overrides = {}) {
   const db = admin.firestore();
-  const todayKey = toDateKey(new Date());
-  const sanitizedThreshold = Number.isFinite(thresholdDays) && thresholdDays > 0 ? thresholdDays : 5;
-
   const storeSnap = await db.collection("stores").doc(String(storeId)).get();
   if (!storeSnap.exists) {
     throw new Error("Store not found");
   }
 
-  const store = storeSnap.data();
-  const recipient = store.alertEmail || store.email;
+  const store = storeSnap.data() || {};
+  const settings = {
+    ...resolveInventorySettings(store),
+    ...(overrides.thresholdDays ? { lowStockThresholdDays: Number(overrides.thresholdDays) } : {}),
+    ...(Object.prototype.hasOwnProperty.call(overrides, "thresholdUnits")
+      ? { lowStockThresholdUnits: overrides.thresholdUnits }
+      : {})
+  };
+
+  if (!settings.lowStockAlertsEnabled) {
+    return { sent: 0, skipped: 0, reason: "Low stock alerts disabled" };
+  }
+
+  const recipient = String(settings.alertRecipientEmail || "").trim();
   if (!recipient) {
     return { sent: 0, skipped: 0, reason: "Missing alert email" };
   }
 
-  const productsSnap = await db.collection("products").where("storeId", "==", storeId).get();
-  const products = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const todayKey = toDateKey(new Date());
+  const result = await computeRestockSuggestions(storeId, { storeSettings: settings });
+  const candidates = sortRestockItems(result.suggestions.filter(item => isLowStockSuggestion(item, settings)));
 
-  const range7 = dateRangeKeys(7);
-  const startDate = range7[0];
+  const actionableItems = candidates.filter(item => String(item.lastLowStockAlertDate || "") !== todayKey);
+  if (!actionableItems.length) {
+    return { sent: 0, skipped: candidates.length, thresholdDays: settings.lowStockThresholdDays, details: [] };
+  }
 
-  let sent = 0;
-  let skipped = 0;
-  const details = [];
+  const subject = actionableItems.length === 1
+    ? `Low stock alert: ${actionableItems[0].name || actionableItems[0].productId}`
+    : `Low stock alert: ${actionableItems.length} products need attention`;
+  const text = buildLowStockDigestText(store.name, settings, actionableItems.slice(0, 10));
 
-  for (const product of products) {
-    const currentStock = Number(product.currentStock ?? 0);
-    const safeStock = Number.isFinite(currentStock) && currentStock > 0 ? currentStock : 0;
+  await sendEmail({ to: recipient, subject, text });
 
-    const salesSnap = await db.collection("daily_sales")
-      .where("storeId", "==", storeId)
-      .where("productId", "==", product.id)
-      .where("date", ">=", startDate)
-      .get();
-
-    const dailyMap = {};
-    salesSnap.forEach(doc => {
-      const data = doc.data();
-      const sold = Number(data.quantitySold || 0);
-      dailyMap[data.date] = Number.isFinite(sold) && sold > 0 ? sold : 0;
-    });
-
-    const avgDailySales = averageForRange(dailyMap, range7);
-    const safeAvg = Number.isFinite(avgDailySales) && avgDailySales > 0 ? avgDailySales : 0;
-    const daysUntilStockout = safeAvg > 0 ? safeStock / safeAvg : Infinity;
-
-    const alreadyAlerted = product.lastLowStockAlertDate === todayKey;
-    if (alreadyAlerted) {
-      skipped += 1;
-      details.push({ productId: product.id, status: "skipped", reason: "already_alerted" });
-      continue;
-    }
-
-    if (daysUntilStockout > sanitizedThreshold) {
-      skipped += 1;
-      details.push({ productId: product.id, status: "skipped", reason: "not_within_threshold" });
-      continue;
-    }
-
-    const subject = `Low stock alert: ${product.name || product.id}`;
-    const text = [
-      `Product: ${product.name || product.id}`,
-      `Current stock: ${safeStock}`,
-      `Avg daily sales: ${safeAvg.toFixed(2)}`,
-      `Estimated days until stockout: ${formatDays(daysUntilStockout)}`,
-      "",
-      // TODO: Polish this email template with clearer guidance and branding.
-      "Consider restocking soon to avoid running out."
-    ].join("\n");
-
-    await sendEmail({ to: recipient, subject, text });
-
-    await db.collection("products").doc(product.id).set({
+  const batch = db.batch();
+  actionableItems.forEach(item => {
+    const ref = db.collection("products").doc(String(item.productId));
+    batch.set(ref, {
       lastLowStockAlertDate: todayKey,
       lastLowStockAlertAt: admin.firestore.Timestamp.now()
     }, { merge: true });
-
-    sent += 1;
-    details.push({ productId: product.id, status: "sent" });
-  }
+  });
+  await batch.commit();
 
   return {
-    sent,
-    skipped,
-    thresholdDays: sanitizedThreshold,
-    details
+    sent: actionableItems.length,
+    skipped: candidates.length - actionableItems.length,
+    thresholdDays: settings.lowStockThresholdDays,
+    details: actionableItems.map(item => ({ productId: item.productId, status: "sent" }))
   };
 }
 
+async function sendConfiguredLowStockAlertsForStore(storeId) {
+  return sendLowStockDigestForStore(storeId);
+}
+
+async function sendLowStockAlertsForStore(storeId, thresholdDays = 5) {
+  return sendLowStockDigestForStore(storeId, { thresholdDays });
+}
+
 module.exports = {
+  buildLowStockDigestText,
+  isLowStockSuggestion,
+  sendConfiguredLowStockAlertsForStore,
   sendLowStockAlertsForStore
 };

@@ -2,7 +2,15 @@ import React, { useEffect, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import Button from "../components/Button.jsx";
 import { useNavigate } from "react-router-dom";
-import { getOrderMomentum, getPricing, getProducts, getRestockSuggestions } from "../api.js";
+import {
+  exportRestockPlanCsv,
+  getOrderMomentum,
+  getPricing,
+  getProducts,
+  getRestockSuggestions,
+  getSkuAnalytics,
+  postRetentionHeartbeat
+} from "../api.js";
 import { useAccess } from "../access/AccessContext.jsx";
 
 function formatMoney(value) {
@@ -67,11 +75,20 @@ export default function Dashboard() {
   const [impactLoading, setImpactLoading] = useState(true);
   const [impactError, setImpactError] = useState("");
   const [stockoutRisks, setStockoutRisks] = useState([]);
+  const [actionPlanRows, setActionPlanRows] = useState([]);
+  const [actionPlanExporting, setActionPlanExporting] = useState(false);
   const [momentum, setMomentum] = useState(null);
   const [momentumWindow, setMomentumWindow] = useState(7);
   const [revenueWindow, setRevenueWindow] = useState(7);
   const [momentumLoading, setMomentumLoading] = useState(true);
   const [momentumError, setMomentumError] = useState("");
+  const [skuAnalytics, setSkuAnalytics] = useState(null);
+  const [skuAnalyticsLoading, setSkuAnalyticsLoading] = useState(true);
+  const [skuAnalyticsError, setSkuAnalyticsError] = useState("");
+
+  useEffect(() => {
+    postRetentionHeartbeat("dashboard").catch(() => {});
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -102,6 +119,7 @@ export default function Dashboard() {
         setImpact({ atRiskSkus: 0, unitsShort: 0, revenueAtRisk: 0 });
         setSyncedProductCount(0);
         setStockoutRisks([]);
+        setActionPlanRows([]);
         setImpactError("");
         setImpactLoading(false);
         return;
@@ -130,29 +148,47 @@ export default function Dashboard() {
         let unitsShort = 0;
         let revenueAtRisk = 0;
         const nextStockoutRisks = [];
+        const nextActionPlanRows = [];
 
         for (const [index, item] of (restockData?.suggestions || []).entries()) {
           if (String(item?.suggestion || "").toUpperCase() !== "RESTOCK") continue;
           atRiskSkus += 1;
           const productId = String(item?.productId || item?.id || "");
           const productMeta = productByProductId.get(productId) || {};
-          const shortUnits = Math.max(0, Number(item?.expectedDemand || 0) - Number(item?.currentStock || 0));
+          const shortUnits = Math.max(0, Number(item?.recommendedReorderQty ?? item?.requiredUnits ?? (Number(item?.expectedDemand || 0) - Number(item?.currentStock || 0))));
           unitsShort += shortUnits;
           const price = Number(productMeta?.price || 0);
-          revenueAtRisk += shortUnits * price;
+          const itemRevenueAtRisk = Number(item?.revenueAtRisk ?? (shortUnits * price));
+          revenueAtRisk += itemRevenueAtRisk;
 
           const avgDailySales = Math.max(0, Number(item?.avgDailySales || 0));
           const currentStock = Math.max(0, Number(item?.currentStock || 0));
-          const daysLeft = avgDailySales > 0 ? currentStock / avgDailySales : Number.POSITIVE_INFINITY;
+          const daysLeft = Number.isFinite(Number(item?.daysUntilStockout))
+            ? Number(item.daysUntilStockout)
+            : (avgDailySales > 0 ? currentStock / avgDailySales : Number.POSITIVE_INFINITY);
           const fallbackName = productId ? `SKU ${productId}` : `SKU ${index + 1}`;
+          const skuName = String(productMeta?.name || item?.name || fallbackName);
           nextStockoutRisks.push({
             productId: productId || `risk-${index + 1}`,
-            skuName: String(productMeta?.name || item?.name || fallbackName),
+            skuName,
             daysLeft
+          });
+          nextActionPlanRows.push({
+            productId: productId || `risk-${index + 1}`,
+            skuName,
+            supplierName: String(item?.supplierName || "").trim(),
+            daysLeft,
+            reorderQty: Math.round(shortUnits),
+            revenueAtRisk: itemRevenueAtRisk
           });
         }
 
         nextStockoutRisks.sort((first, second) => Number(first.daysLeft || 0) - Number(second.daysLeft || 0));
+        nextActionPlanRows.sort((first, second) => {
+          const revenueDiff = Number(second.revenueAtRisk || 0) - Number(first.revenueAtRisk || 0);
+          if (revenueDiff !== 0) return revenueDiff;
+          return Number(first.daysLeft || 0) - Number(second.daysLeft || 0);
+        });
 
         setImpact({
           atRiskSkus,
@@ -160,11 +196,13 @@ export default function Dashboard() {
           revenueAtRisk
         });
         setStockoutRisks(nextStockoutRisks);
+        setActionPlanRows(nextActionPlanRows.slice(0, 5));
       } catch {
         if (!active) return;
         setImpact({ atRiskSkus: 0, unitsShort: 0, revenueAtRisk: 0 });
         setSyncedProductCount(0);
         setStockoutRisks([]);
+        setActionPlanRows([]);
         setImpactError("Impact unavailable");
       } finally {
         if (active) setImpactLoading(false);
@@ -206,6 +244,38 @@ export default function Dashboard() {
     }
 
     loadMomentum();
+    return () => {
+      active = false;
+    };
+  }, [locked]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadSkuAnalytics() {
+      if (locked) {
+        if (!active) return;
+        setSkuAnalytics(null);
+        setSkuAnalyticsLoading(false);
+        setSkuAnalyticsError("");
+        return;
+      }
+
+      try {
+        setSkuAnalyticsLoading(true);
+        setSkuAnalyticsError("");
+        const response = await getSkuAnalytics();
+        if (!active) return;
+        setSkuAnalytics(response || null);
+      } catch {
+        if (!active) return;
+        setSkuAnalytics(null);
+        setSkuAnalyticsError("SKU analytics unavailable");
+      } finally {
+        if (active) setSkuAnalyticsLoading(false);
+      }
+    }
+
+    loadSkuAnalytics();
     return () => {
       active = false;
     };
@@ -288,6 +358,15 @@ export default function Dashboard() {
   // #5: Today's Action — most urgent single message
   const urgentRisk = topStockoutRisks[0] || null;
   const todayActionType = impact.atRiskSkus > 0 ? (urgentRisk && Number(urgentRisk.daysLeft) <= 3 ? "critical" : "warning") : "safe";
+
+  async function handleExportActionPlan() {
+    setActionPlanExporting(true);
+    try {
+      await exportRestockPlanCsv();
+    } finally {
+      setActionPlanExporting(false);
+    }
+  }
 
   return (
     <div className="page dashboard-page">
@@ -539,6 +618,123 @@ export default function Dashboard() {
               <div className="stat-helper">Estimated from units short x product price.</div>
             </article>
           </div>
+        ) : null}
+      </section>
+
+      <div className="section-divider" aria-hidden="true" />
+
+      <section className="card dashboard-section">
+        <div className="card-actions">
+          <div>
+            <h2>Weekly Action Plan</h2>
+            <p className="page-subtitle">Top SKUs to review this week based on stock cover and revenue exposure.</p>
+          </div>
+          <div className="csv-actions">
+            <Button type="button" variant="secondary" onClick={() => navigate("/dashboard/products")}>
+              Go to Products
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              loading={actionPlanExporting}
+              loadingText="Exporting..."
+              onClick={handleExportActionPlan}
+            >
+              Export Reorder CSV
+            </Button>
+          </div>
+        </div>
+        {impactLoading ? (
+          <EmptyState title="Preparing action plan..." description="Reviewing your latest restock priorities." />
+        ) : null}
+        {!impactLoading && actionPlanRows.length === 0 ? (
+          <EmptyState title="No urgent reorder actions" description="Your current SKUs look healthy. Metric Mango will flag the next risk automatically." />
+        ) : null}
+        {!impactLoading && actionPlanRows.length > 0 ? (
+          <div className="action-plan-list">
+            {actionPlanRows.map(item => (
+              <article key={item.productId} className="action-plan-item">
+                <div>
+                  <h3>{item.skuName}</h3>
+                  <p>
+                    {item.supplierName ? `Supplier: ${item.supplierName}` : "Supplier not set"}
+                    {" • "}
+                    {Number.isFinite(item.daysLeft) ? `~${Math.max(0, Math.ceil(item.daysLeft))} days of stock cover` : "No sales velocity"}
+                  </p>
+                </div>
+                <div className="action-plan-metrics">
+                  <span>Reorder {item.reorderQty}</span>
+                  <strong>{formatMoneyByCurrency(impactCurrency, item.revenueAtRisk)}</strong>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+      <div className="section-divider" aria-hidden="true" />
+
+      <section className="card dashboard-section">
+        <div className="section-heading">
+          <h2>SKU Analytics</h2>
+          <p className="page-subtitle">Spot fast movers, slow movers, and how much inventory cover your catalog actually has.</p>
+        </div>
+        {skuAnalyticsLoading ? (
+          <EmptyState title="Loading SKU analytics..." description="Calculating sell-through, stock cover, and velocity bands." />
+        ) : null}
+        {!skuAnalyticsLoading && skuAnalyticsError ? (
+          <EmptyState title="SKU analytics unavailable" description={skuAnalyticsError} />
+        ) : null}
+        {!skuAnalyticsLoading && !skuAnalyticsError && skuAnalytics ? (
+          <>
+            <div className="impact-grid sku-analytics-grid">
+              <article className="stat-card impact-card">
+                <div className="stat-label">Avg Sell-through (30d)</div>
+                <div className="stat-value">{Number(skuAnalytics.summary?.avgSellThroughRate30 || 0).toFixed(1)}%</div>
+                <div className="stat-helper">How much of your available inventory moved in the last 30 days.</div>
+              </article>
+              <article className="stat-card impact-card">
+                <div className="stat-label">Avg Stock Cover</div>
+                <div className="stat-value">
+                  {Number.isFinite(Number(skuAnalytics.summary?.avgStockCoverDays))
+                    ? `${Math.round(Number(skuAnalytics.summary?.avgStockCoverDays || 0))}d`
+                    : "—"}
+                </div>
+                <div className="stat-helper">Average runway across tracked SKUs.</div>
+              </article>
+              <article className="stat-card impact-card">
+                <div className="stat-label">Trend Direction</div>
+                <div className="stat-value">{skuAnalytics.summary?.growingSkus || 0} up / {skuAnalytics.summary?.slippingSkus || 0} down</div>
+                <div className="stat-helper">Quick view of how many products are accelerating or slipping.</div>
+              </article>
+            </div>
+            <div className="sku-analytics-lists">
+              <div className="sku-analytics-column">
+                <h3>Fast-Moving SKUs</h3>
+                {(skuAnalytics.fastMovers || []).slice(0, 5).map(item => (
+                  <article key={`fast-${item.productId}`} className="sku-analytics-item">
+                    <div>
+                      <strong>{item.name}</strong>
+                      <p>{item.avgDailySales7.toFixed(1)} units/day • {item.sellThroughRate30.toFixed(1)}% sell-through</p>
+                    </div>
+                    <span className={`status ${item.trendDirection === "up" ? "status-safe" : "status-neutral"}`}>{item.trendDirection}</span>
+                  </article>
+                ))}
+              </div>
+              <div className="sku-analytics-column">
+                <h3>Slow-Moving SKUs</h3>
+                {(skuAnalytics.slowMovers || []).slice(0, 5).map(item => (
+                  <article key={`slow-${item.productId}`} className="sku-analytics-item">
+                    <div>
+                      <strong>{item.name}</strong>
+                      <p>{item.avgDailySales7.toFixed(1)} units/day • {Number.isFinite(item.stockCoverDays) ? `~${Math.ceil(item.stockCoverDays)} days cover` : "No sales velocity"}</p>
+                    </div>
+                    <span className={`status ${item.trendDirection === "down" ? "status-alert" : "status-neutral"}`}>{item.trendDirection}</span>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </>
         ) : null}
       </section>
 

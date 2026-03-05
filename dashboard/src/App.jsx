@@ -501,11 +501,7 @@ function LandingPage({ themeMode, onToggleTheme }) {
             <h2>From install to your first stockout alert in under 2 minutes.</h2>
             <p className="mm-how-subline">No demo call. No setup wizard. No waiting for someone to onboard you.</p>
 
-            <div className="mm-about-section-col">
-              <h4>Legal</h4>
-              <Link to="/privacy-policy" className="mm-about-section-link">Privacy Policy</Link>
-              <Link to="/terms-of-service" className="mm-about-section-link">Terms of Service</Link>
-            </div>
+
 
             <div className="mm-how-flow">
               <article className="mm-how-step">
@@ -673,6 +669,14 @@ function LandingPage({ themeMode, onToggleTheme }) {
         </div>
 
       </main>
+
+      <footer className="mm-footer">
+        <div className="mm-footer-links">
+          <Link to="/privacy-policy" className="mm-footer-link">Privacy Policy</Link>
+          <Link to="/terms-of-service" className="mm-footer-link">Terms of Service</Link>
+        </div>
+        <p className="mm-copyright">© {new Date().getFullYear()} Metric Mango. All rights reserved.</p>
+      </footer>
 
       <LandingAuthModal open={isAuthModalOpen} mode={authMode} onClose={() => setIsAuthModalOpen(false)} onAuthSuccess={() => {
         // navigate to payment page based on selectedStore
@@ -880,9 +884,7 @@ function DashboardLayout({ themeMode, onToggleTheme }) {
               <NavLink to="/dashboard" end className={({ isActive }) => (isActive ? "active" : "")}>Overview</NavLink>
               <NavLink to="/dashboard/products" className={({ isActive }) => (isActive ? "active" : "")}>Products</NavLink>
               <NavLink to="/dashboard/forecast" className={({ isActive }) => (isActive ? "active" : "")}>Forecast</NavLink>
-              {accessState.trialExpired || locked || !overview?.plan || overview?.plan !== 'active' ? (
-                <NavLink to="/dashboard/pricing" className={({ isActive }) => (isActive ? "active" : "")}>Pricing</NavLink>
-              ) : null}
+              <NavLink to="/dashboard/pricing" className={({ isActive }) => (isActive ? "active" : "")}>Pricing</NavLink>
             </nav>
             <div className="session-meta">
               <span className="session-email">{user?.email || "Signed in"}</span>

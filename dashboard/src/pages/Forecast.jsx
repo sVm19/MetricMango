@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
-import { getForecast, getRestockSuggestions } from "../api.js";
+import { getForecast, getRestockSuggestions, postRetentionHeartbeat } from "../api.js";
 import { useAccess } from "../access/AccessContext.jsx";
 
 export default function Forecast() {
@@ -9,6 +9,10 @@ export default function Forecast() {
   const [restock, setRestock] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    postRetentionHeartbeat("forecast").catch(() => {});
+  }, []);
 
   useEffect(() => {
     let active = true;

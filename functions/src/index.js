@@ -13,7 +13,20 @@ const resendWebhook = require("./routes/resendWebhook");
 const dashboard = require("./routes/dashboard");
 const forecast = require("./routes/forecast");
 const { computeRestockSuggestions } = require("./services/restockService");
-const { sendLowStockAlertsForStore } = require("./services/lowStockAlertService");
+const { sendConfiguredLowStockAlertsForStore, sendLowStockAlertsForStore } = require("./services/lowStockAlertService");
+const { sendSalesSpikeAlertsForStore } = require("./services/salesSpikeAlertService");
+const { sendWeeklyActionPlanForStore } = require("./services/weeklyActionPlanService");
+const { attachSupplierLinks, normalizeSupplierRecord } = require("./services/supplierService");
+const {
+  buildPurchaseOrderDraft,
+  filterRestockItemsForSupplier,
+  toPurchaseOrderCsvRows
+} = require("./services/purchaseOrderService");
+const {
+  buildRetentionStatus,
+  getSaveOfferForReason,
+  sendReengagementEmailForStore
+} = require("./services/retentionService");
 const { decideBillingProvider, normalizeBillingProvider } = require("./services/billingProviderService");
 const { evaluateProviderGuard, getEnabledProviders } = require("./services/billingGuardService");
 const { createRazorpaySubscription } = require("./services/razorpayService");
@@ -24,6 +37,17 @@ const { createLemonSqueezyCheckout } = require("./services/lemonSqueezyService")
 const { PRICING } = require("./config/pricing");
 const { runDailyDripCampaign } = require("./services/dripCampaignService");
 const { processNewLead } = require("./services/leadService");
+const {
+  DEFAULT_INVENTORY_SETTINGS,
+  resolveInventorySettings,
+  validateInventorySettingsPatch,
+  validatePurchaseOrderDraftPayload,
+  validatePurchaseOrderPatch,
+  validateProductPlanningPatch
+  ,
+  validateRetentionRequestPayload,
+  validateSupplierPayload
+} = require("./services/inventorySettingsService");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -99,6 +123,13 @@ function defaultFeatures() {
     emailAlerts: true,
     csvExport: true,
     forecasting: true
+  };
+}
+
+function defaultInventorySettings({ email = "" } = {}) {
+  return {
+    ...DEFAULT_INVENTORY_SETTINGS,
+    alertRecipientEmail: String(email || "").trim().toLowerCase()
   };
 }
 
@@ -202,7 +233,8 @@ async function createStoreForUser({ uid, email, country }) {
       country: countryCode || "",
       shopCountry: countryCode || "",
       onboardingCompleted: false,
-      features: defaultFeatures()
+      features: defaultFeatures(),
+      inventorySettings: defaultInventorySettings({ email })
     }, { merge: true });
 
     const userPayload = {
@@ -670,6 +702,409 @@ app.get("/stores", apiKeyGate, apiRateLimit, async (req, res) => {
   }
 });
 
+app.get("/settings/inventory", apiKeyGate, apiRateLimit, subscriptionGate, async (req, res) => {
+  try {
+    const settings = resolveInventorySettings(req.store || {});
+    return res.json(settings);
+  } catch (error) {
+    console.error("Inventory settings load error:", error);
+    return res.status(500).json({ error: "Failed to load inventory settings" });
+  }
+});
+
+app.patch("/settings/inventory", express.json({ limit: "1mb" }), apiKeyGate, apiRateLimit, subscriptionGate, async (req, res) => {
+  try {
+    const patch = validateInventorySettingsPatch(req.body || {});
+    const currentStore = req.store || {};
+    const nextSettings = {
+      ...resolveInventorySettings(currentStore),
+      ...patch
+    };
+
+    await db.collection("stores").doc(String(req.storeId)).set({
+      inventorySettings: nextSettings
+    }, { merge: true });
+
+    req.store = {
+      ...currentStore,
+      inventorySettings: nextSettings
+    };
+
+    return res.json(nextSettings);
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 500;
+    console.error("Inventory settings update error:", error);
+    return res.status(statusCode).json({ error: error?.message || "Failed to update inventory settings" });
+  }
+});
+
+app.patch("/products/:productId/planning", express.json({ limit: "1mb" }), apiKeyGate, apiRateLimit, subscriptionGate, async (req, res) => {
+  try {
+    const productId = String(req.params.productId || "").trim();
+    if (!productId) {
+      return res.status(400).json({ error: "Missing productId" });
+    }
+
+    const patch = validateProductPlanningPatch(req.body || {});
+    const productRef = db.collection("products").doc(productId);
+    const productSnap = await productRef.get();
+    if (!productSnap.exists) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    const product = productSnap.data() || {};
+    if (String(product.storeId || "") !== String(req.storeId || "")) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    if (Object.prototype.hasOwnProperty.call(patch, "supplierId")) {
+      if (patch.supplierId) {
+        const supplierSnap = await db.collection("suppliers").doc(String(patch.supplierId)).get();
+        if (!supplierSnap.exists || String(supplierSnap.data()?.storeId || "") !== String(req.storeId || "")) {
+          return res.status(404).json({ error: "Supplier not found" });
+        }
+        const supplier = supplierSnap.data() || {};
+        patch.supplierName = patch.supplierName || String(supplier.name || "");
+        if (!Object.prototype.hasOwnProperty.call(patch, "leadTimeDays")
+          && !Number.isFinite(Number(product.leadTimeDays))
+          && Number.isFinite(Number(supplier.defaultLeadTimeDays))) {
+          patch.leadTimeDays = Number(supplier.defaultLeadTimeDays);
+        }
+      } else if (!Object.prototype.hasOwnProperty.call(patch, "supplierName")) {
+        patch.supplierName = "";
+      }
+    } else if (Object.prototype.hasOwnProperty.call(patch, "supplierName") && !patch.supplierName) {
+      patch.supplierId = "";
+    }
+
+    await productRef.set(patch, { merge: true });
+    return res.json({
+      productId,
+      leadTimeDays: patch.leadTimeDays ?? product.leadTimeDays ?? null,
+      supplierId: patch.supplierId ?? product.supplierId ?? "",
+      supplierName: patch.supplierName ?? product.supplierName ?? ""
+    });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 500;
+    console.error("Product planning update error:", error);
+    return res.status(statusCode).json({ error: error?.message || "Failed to update product planning" });
+  }
+});
+
+app.get("/suppliers", apiKeyGate, apiRateLimit, subscriptionGate, async (req, res) => {
+  try {
+    const [supplierSnap, productsSnap] = await Promise.all([
+      db.collection("suppliers").where("storeId", "==", String(req.storeId || "")).get(),
+      db.collection("products").where("storeId", "==", String(req.storeId || "")).get()
+    ]);
+
+    const suppliers = supplierSnap.docs.map(doc => normalizeSupplierRecord(doc));
+    const products = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return res.json({
+      suppliers: attachSupplierLinks(suppliers, products)
+    });
+  } catch (error) {
+    console.error("Suppliers load error:", error);
+    return res.status(500).json({ error: "Failed to load suppliers" });
+  }
+});
+
+app.post("/suppliers", express.json({ limit: "1mb" }), apiKeyGate, apiRateLimit, subscriptionGate, async (req, res) => {
+  try {
+    const payload = validateSupplierPayload(req.body || {}, { partial: false });
+    const supplierRef = db.collection("suppliers").doc();
+    const timestamp = admin.firestore.Timestamp.now();
+    const supplier = {
+      storeId: String(req.storeId || ""),
+      ...payload,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+
+    await supplierRef.set(supplier, { merge: true });
+    return res.status(201).json({
+      id: supplierRef.id,
+      ...payload,
+      linkedProductCount: 0,
+      linkedProducts: []
+    });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 500;
+    console.error("Supplier create error:", error);
+    return res.status(statusCode).json({ error: error?.message || "Failed to create supplier" });
+  }
+});
+
+app.patch("/suppliers/:supplierId", express.json({ limit: "1mb" }), apiKeyGate, apiRateLimit, subscriptionGate, async (req, res) => {
+  try {
+    const supplierId = String(req.params.supplierId || "").trim();
+    if (!supplierId) {
+      return res.status(400).json({ error: "Missing supplierId" });
+    }
+
+    const supplierRef = db.collection("suppliers").doc(supplierId);
+    const supplierSnap = await supplierRef.get();
+    if (!supplierSnap.exists || String(supplierSnap.data()?.storeId || "") !== String(req.storeId || "")) {
+      return res.status(404).json({ error: "Supplier not found" });
+    }
+
+    const patch = validateSupplierPayload(req.body || {}, { partial: true });
+    await supplierRef.set({
+      ...patch,
+      updatedAt: admin.firestore.Timestamp.now()
+    }, { merge: true });
+
+    const updated = {
+      id: supplierId,
+      ...supplierSnap.data(),
+      ...patch
+    };
+    return res.json(normalizeSupplierRecord(updated));
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 500;
+    console.error("Supplier update error:", error);
+    return res.status(statusCode).json({ error: error?.message || "Failed to update supplier" });
+  }
+});
+
+app.get("/purchase-orders", apiKeyGate, apiRateLimit, subscriptionGate, async (req, res) => {
+  try {
+    const snapshot = await db.collection("purchase_orders").where("storeId", "==", String(req.storeId || "")).get();
+    const purchaseOrders = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((first, second) => {
+        const firstMillis = first.updatedAt?.toMillis ? first.updatedAt.toMillis() : 0;
+        const secondMillis = second.updatedAt?.toMillis ? second.updatedAt.toMillis() : 0;
+        return secondMillis - firstMillis;
+      })
+      .map(item => ({
+        ...item,
+        createdAt: item.createdAt?.toDate ? item.createdAt.toDate().toISOString() : null,
+        updatedAt: item.updatedAt?.toDate ? item.updatedAt.toDate().toISOString() : null
+      }));
+
+    return res.json({ purchaseOrders });
+  } catch (error) {
+    console.error("Purchase orders load error:", error);
+    return res.status(500).json({ error: "Failed to load purchase orders" });
+  }
+});
+
+app.post("/purchase-orders/draft-from-restock", express.json({ limit: "1mb" }), apiKeyGate, apiRateLimit, subscriptionGate, async (req, res) => {
+  try {
+    const payload = validatePurchaseOrderDraftPayload(req.body || {});
+    let supplier = null;
+
+    if (payload.supplierId) {
+      const supplierSnap = await db.collection("suppliers").doc(String(payload.supplierId)).get();
+      if (!supplierSnap.exists || String(supplierSnap.data()?.storeId || "") !== String(req.storeId || "")) {
+        return res.status(404).json({ error: "Supplier not found" });
+      }
+      supplier = normalizeSupplierRecord(supplierSnap);
+    }
+
+    const restockData = await computeRestockSuggestions(req.storeId, {
+      storeSettings: resolveInventorySettings(req.store || {})
+    });
+    const filteredItems = filterRestockItemsForSupplier(restockData.suggestions, {
+      supplierId: payload.supplierId || supplier?.id || "",
+      supplierName: payload.supplierName || supplier?.name || ""
+    });
+    const draft = buildPurchaseOrderDraft({
+      supplier: supplier || {
+        supplierId: payload.supplierId || "",
+        supplierName: payload.supplierName || "Mixed suppliers"
+      },
+      items: filteredItems,
+      notes: payload.notes || ""
+    });
+
+    if (!draft.lineItems.length) {
+      return res.status(400).json({ error: "No restock items matched this purchase order draft" });
+    }
+
+    const purchaseOrderRef = db.collection("purchase_orders").doc();
+    const timestamp = admin.firestore.Timestamp.now();
+    const record = {
+      storeId: String(req.storeId || ""),
+      ...draft,
+      createdFrom: "forecast",
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    await purchaseOrderRef.set(record, { merge: true });
+
+    return res.status(201).json({
+      id: purchaseOrderRef.id,
+      ...draft,
+      createdAt: timestamp.toDate().toISOString(),
+      updatedAt: timestamp.toDate().toISOString()
+    });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 500;
+    console.error("Purchase order draft error:", error);
+    return res.status(statusCode).json({ error: error?.message || "Failed to create purchase order draft" });
+  }
+});
+
+app.patch("/purchase-orders/:purchaseOrderId", express.json({ limit: "1mb" }), apiKeyGate, apiRateLimit, subscriptionGate, async (req, res) => {
+  try {
+    const purchaseOrderId = String(req.params.purchaseOrderId || "").trim();
+    if (!purchaseOrderId) {
+      return res.status(400).json({ error: "Missing purchaseOrderId" });
+    }
+
+    const purchaseOrderRef = db.collection("purchase_orders").doc(purchaseOrderId);
+    const purchaseOrderSnap = await purchaseOrderRef.get();
+    if (!purchaseOrderSnap.exists || String(purchaseOrderSnap.data()?.storeId || "") !== String(req.storeId || "")) {
+      return res.status(404).json({ error: "Purchase order not found" });
+    }
+
+    const patch = validatePurchaseOrderPatch(req.body || {});
+    const next = {
+      ...patch,
+      updatedAt: admin.firestore.Timestamp.now()
+    };
+    if (patch.status === "approved") {
+      next.approvedAt = admin.firestore.Timestamp.now();
+      next.approvedBy = String(req.firebaseUser?.email || "");
+    }
+    if (patch.status === "exported") {
+      next.exportedAt = admin.firestore.Timestamp.now();
+    }
+
+    await purchaseOrderRef.set(next, { merge: true });
+    const current = purchaseOrderSnap.data() || {};
+    return res.json({
+      id: purchaseOrderId,
+      ...current,
+      ...patch,
+      updatedAt: next.updatedAt.toDate().toISOString()
+    });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 500;
+    console.error("Purchase order update error:", error);
+    return res.status(statusCode).json({ error: error?.message || "Failed to update purchase order" });
+  }
+});
+
+app.get("/retention/status", apiKeyGate, apiRateLimit, async (req, res) => {
+  try {
+    const snapshot = await db.collection("retention_requests").where("storeId", "==", String(req.storeId || "")).get();
+    const latestRequest = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((first, second) => {
+        const firstMillis = first.createdAt?.toMillis ? first.createdAt.toMillis() : 0;
+        const secondMillis = second.createdAt?.toMillis ? second.createdAt.toMillis() : 0;
+        return secondMillis - firstMillis;
+      })[0] || null;
+
+    return res.json(buildRetentionStatus(req.store || {}, latestRequest, new Date()));
+  } catch (error) {
+    console.error("Retention status error:", error);
+    return res.status(500).json({ error: "Failed to load retention status" });
+  }
+});
+
+app.post("/retention/heartbeat", express.json({ limit: "1mb" }), apiKeyGate, apiRateLimit, async (req, res) => {
+  try {
+    const page = String(req.body?.page || "unknown").trim().toLowerCase().slice(0, 40);
+    const timestamp = admin.firestore.Timestamp.now();
+    await db.collection("stores").doc(String(req.storeId || "")).set({
+      engagement: {
+        ...((req.store || {}).engagement || {}),
+        lastActiveAt: timestamp,
+        lastActivePage: page,
+        [`${page}LastVisitedAt`]: timestamp
+      }
+    }, { merge: true });
+
+    return res.json({ ok: true, page });
+  } catch (error) {
+    console.error("Retention heartbeat error:", error);
+    return res.status(500).json({ error: "Failed to record retention heartbeat" });
+  }
+});
+
+app.post("/retention/pause-request", express.json({ limit: "1mb" }), apiKeyGate, apiRateLimit, async (req, res) => {
+  try {
+    const payload = validateRetentionRequestPayload(req.body || {});
+    const saveOffer = getSaveOfferForReason(payload.reason);
+    const requestRef = db.collection("retention_requests").doc();
+    const timestamp = admin.firestore.Timestamp.now();
+    const pauseDays = payload.reason === "seasonal" ? 60 : 30;
+
+    await requestRef.set({
+      storeId: String(req.storeId || ""),
+      type: "pause",
+      reason: payload.reason,
+      note: payload.note,
+      pauseDays,
+      saveOffer,
+      status: "requested",
+      createdAt: timestamp
+    }, { merge: true });
+
+    await db.collection("stores").doc(String(req.storeId || "")).set({
+      retention: {
+        ...((req.store || {}).retention || {}),
+        pauseRequestedAt: timestamp,
+        pauseReason: payload.reason
+      }
+    }, { merge: true });
+
+    return res.status(201).json({
+      requestId: requestRef.id,
+      type: "pause",
+      status: "requested",
+      pauseDays,
+      saveOffer
+    });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 500;
+    console.error("Pause request error:", error);
+    return res.status(statusCode).json({ error: error?.message || "Failed to create pause request" });
+  }
+});
+
+app.post("/retention/cancel-request", express.json({ limit: "1mb" }), apiKeyGate, apiRateLimit, async (req, res) => {
+  try {
+    const payload = validateRetentionRequestPayload(req.body || {});
+    const saveOffer = getSaveOfferForReason(payload.reason);
+    const requestRef = db.collection("retention_requests").doc();
+    const timestamp = admin.firestore.Timestamp.now();
+
+    await requestRef.set({
+      storeId: String(req.storeId || ""),
+      type: "cancel",
+      reason: payload.reason,
+      note: payload.note,
+      saveOffer,
+      status: "requested",
+      createdAt: timestamp
+    }, { merge: true });
+
+    await db.collection("stores").doc(String(req.storeId || "")).set({
+      retention: {
+        ...((req.store || {}).retention || {}),
+        cancelRequestedAt: timestamp,
+        cancelReason: payload.reason
+      }
+    }, { merge: true });
+
+    return res.status(201).json({
+      requestId: requestRef.id,
+      type: "cancel",
+      status: "requested",
+      saveOffer
+    });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 500;
+    console.error("Cancel request error:", error);
+    return res.status(statusCode).json({ error: error?.message || "Failed to create cancel request" });
+  }
+});
+
 app.get("/pricing", apiKeyGate, apiRateLimit, (req, res) => {
   try {
     // Pricing is derived from backend config + store billing provider (frontend never decides).
@@ -821,7 +1256,7 @@ app.post("/onboarding/complete", apiKeyGate, apiRateLimit, async (req, res) => {
 });
 
 // Lead Magnet endpoint
-app.post("/api/leads", apiRateLimit, async (req, res) => {
+app.post("/leads", apiRateLimit, async (req, res) => {
   try {
     const { storeName, email } = req.body;
     if (!storeName || !email) {
@@ -1563,16 +1998,11 @@ app.get("/restock-suggestions", apiKeyGate, apiRateLimit, subscriptionGate, asyn
     if (hasLeadTimeParam && (!Number.isFinite(parsedLeadTime) || parsedLeadTime <= 0)) {
       return res.status(400).json({ error: "Invalid leadTimeDays" });
     }
-    const leadTimeDays = hasLeadTimeParam ? parsedLeadTime : 7;
-    const suggestions = await computeRestockSuggestions(storeId, leadTimeDays);
-    // Response example:
-    // {
-    //   leadTimeDays: 7,
-    //   suggestions: [
-    //     { productId: "abc", currentStock: 12, avgDailySales: 1.4, expectedDemand: 9.8, suggestion: "SAFE" }
-    //   ]
-    // }
-    return res.json({ leadTimeDays, suggestions });
+    const result = await computeRestockSuggestions(storeId, {
+      leadTimeDaysOverride: hasLeadTimeParam ? parsedLeadTime : undefined,
+      storeSettings: resolveInventorySettings(req.store || {})
+    });
+    return res.json(result);
   } catch (error) {
     console.error("Restock error:", error);
     return res.status(500).json({ error: "Failed to compute restock suggestions" });
@@ -1590,8 +2020,9 @@ app.get("/alerts/low-stock", apiKeyGate, apiRateLimit, subscriptionGate, async (
     if (hasThreshold && (!Number.isFinite(parsedThreshold) || parsedThreshold <= 0)) {
       return res.status(400).json({ error: "Invalid thresholdDays" });
     }
-    const thresholdDays = hasThreshold ? parsedThreshold : 5;
-    const result = await sendLowStockAlertsForStore(storeId, thresholdDays);
+    const result = hasThreshold
+      ? await sendLowStockAlertsForStore(storeId, parsedThreshold)
+      : await sendConfiguredLowStockAlertsForStore(storeId);
     return res.json(result);
   } catch (error) {
     console.error("Low stock alert error:", error);
@@ -1958,6 +2389,110 @@ app.post("/billing/paypal/subscribe", apiKeyGate, apiRateLimit, async (req, res)
   }
 });
 
+app.get("/export/restock-plan", apiKeyGate, apiRateLimit, subscriptionGate, async (req, res) => {
+  try {
+    if (!requireFeature(req.store, "csvExport")) {
+      return res.status(403).json({ error: "Feature disabled: csvExport" });
+    }
+    const parsedLeadTime = Number(req.query.leadTimeDays);
+    const hasLeadTimeParam = req.query.leadTimeDays !== undefined;
+    if (hasLeadTimeParam && (!Number.isFinite(parsedLeadTime) || parsedLeadTime <= 0)) {
+      return res.status(400).json({ error: "Invalid leadTimeDays" });
+    }
+
+    const result = await computeRestockSuggestions(req.storeId, {
+      leadTimeDaysOverride: hasLeadTimeParam ? parsedLeadTime : undefined,
+      storeSettings: resolveInventorySettings(req.store || {})
+    });
+
+    const rows = result.suggestions.map(item => ({
+      productId: item.productId,
+      name: item.name || "",
+      supplierName: item.supplierName || "",
+      currentStock: Number(item.currentStock || 0),
+      avgDailySales: Number(item.avgDailySales || 0),
+      leadTimeDays: Number(item.leadTimeDays || 0),
+      safetyBufferDays: Number(item.safetyBufferDays || 0),
+      planningWindowDays: Number(item.planningWindowDays || 0),
+      expectedDemand: Number(item.expectedDemand || 0),
+      recommendedReorderQty: Number(item.recommendedReorderQty || 0),
+      revenueAtRisk: Number(item.revenueAtRisk || 0),
+      suggestion: item.suggestion || "SAFE"
+    }));
+
+    const columns = [
+      "productId",
+      "name",
+      "supplierName",
+      "currentStock",
+      "avgDailySales",
+      "leadTimeDays",
+      "safetyBufferDays",
+      "planningWindowDays",
+      "expectedDemand",
+      "recommendedReorderQty",
+      "revenueAtRisk",
+      "suggestion"
+    ];
+    const csv = toCsv(columns, rows);
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", "attachment; filename=\"restock-plan.csv\"");
+    return res.status(200).send(csv);
+  } catch (error) {
+    console.error("Restock export error:", error);
+    return res.status(500).json({ error: "Failed to export restock plan" });
+  }
+});
+
+app.get("/export/purchase-orders/:purchaseOrderId", apiKeyGate, apiRateLimit, subscriptionGate, async (req, res) => {
+  try {
+    if (!requireFeature(req.store, "csvExport")) {
+      return res.status(403).json({ error: "Feature disabled: csvExport" });
+    }
+
+    const purchaseOrderId = String(req.params.purchaseOrderId || "").trim();
+    if (!purchaseOrderId) {
+      return res.status(400).json({ error: "Missing purchaseOrderId" });
+    }
+
+    const purchaseOrderSnap = await db.collection("purchase_orders").doc(purchaseOrderId).get();
+    if (!purchaseOrderSnap.exists || String(purchaseOrderSnap.data()?.storeId || "") !== String(req.storeId || "")) {
+      return res.status(404).json({ error: "Purchase order not found" });
+    }
+
+    const purchaseOrder = { id: purchaseOrderSnap.id, ...purchaseOrderSnap.data() };
+    const rows = toPurchaseOrderCsvRows(purchaseOrder);
+    const columns = [
+      "purchaseOrderId",
+      "supplierName",
+      "status",
+      "productId",
+      "name",
+      "currentStock",
+      "avgDailySales",
+      "leadTimeDays",
+      "planningWindowDays",
+      "recommendedReorderQty",
+      "revenueAtRisk"
+    ];
+    const csv = toCsv(columns, rows);
+
+    await purchaseOrderSnap.ref.set({
+      status: "exported",
+      exportedAt: admin.firestore.Timestamp.now(),
+      updatedAt: admin.firestore.Timestamp.now()
+    }, { merge: true });
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="purchase-order-${purchaseOrderId}.csv"`);
+    return res.status(200).send(csv);
+  } catch (error) {
+    console.error("Purchase order export error:", error);
+    return res.status(500).json({ error: "Failed to export purchase order" });
+  }
+});
+
 app.get("/export/orders", apiKeyGate, apiRateLimit, subscriptionGate, async (req, res) => {
   try {
     if (!requireFeature(req.store, "csvExport")) {
@@ -2072,6 +2607,21 @@ exports.onAuthUserDelete = functions.auth.user().onDelete(async user => {
   return null;
 });
 
+async function listScheduledInventoryStores() {
+  const snapshot = await db.collection("stores")
+    .where("plan", "in", ["trial", "active"])
+    .get();
+  return snapshot.docs;
+}
+
+function mondayDateKey(date = new Date()) {
+  const next = new Date(date);
+  const day = next.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  next.setUTCDate(next.getUTCDate() + diff);
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
+}
+
 // TEMPORARY DEBUG ENDPOINT
 app.get("/debug/drip", async (req, res) => {
   try {
@@ -2091,6 +2641,74 @@ exports.dailyEmailDrip = functions.pubsub.schedule("0 14 * * *")
       console.info("Daily email drip campaign completed successfully.");
     } catch (error) {
       console.error("Critical error running daily email drip campaign:", error);
+    }
+    return null;
+  });
+
+exports.dailyInventoryNotifications = functions.pubsub.schedule("0 14 * * *")
+  .timeZone("UTC")
+  .onRun(async () => {
+    const stores = await listScheduledInventoryStores();
+    for (const doc of stores) {
+      const storeId = String(doc.id);
+      const store = doc.data() || {};
+      if (!requireFeature(store, "emailAlerts")) {
+        continue;
+      }
+      const settings = resolveInventorySettings(store);
+      try {
+        if (settings.alertFrequency === "daily") {
+          await sendConfiguredLowStockAlertsForStore(storeId);
+        }
+      } catch (error) {
+        console.error("Daily low-stock notification failed", { storeId, message: error?.message || String(error) });
+      }
+
+      try {
+        if (settings.salesSpikeAlertsEnabled) {
+          await sendSalesSpikeAlertsForStore(storeId);
+        }
+      } catch (error) {
+        console.error("Daily sales-spike notification failed", { storeId, message: error?.message || String(error) });
+      }
+    }
+    return null;
+  });
+
+exports.weeklyInventoryActionPlan = functions.pubsub.schedule("0 14 * * 1")
+  .timeZone("UTC")
+  .onRun(async () => {
+    const stores = await listScheduledInventoryStores();
+    const dateKey = mondayDateKey(new Date());
+    for (const doc of stores) {
+      const storeId = String(doc.id);
+      try {
+        await sendWeeklyActionPlanForStore(storeId, dateKey);
+      } catch (error) {
+        console.error("Weekly action plan failed", { storeId, message: error?.message || String(error) });
+      }
+    }
+    return null;
+  });
+
+exports.dailyRetentionRescue = functions.pubsub.schedule("0 15 * * *")
+  .timeZone("UTC")
+  .onRun(async () => {
+    const stores = await listScheduledInventoryStores();
+    for (const doc of stores) {
+      const storeId = String(doc.id);
+      const store = doc.data() || {};
+      if (!requireFeature(store, "emailAlerts")) {
+        continue;
+      }
+      try {
+        await sendReengagementEmailForStore(storeId, new Date());
+      } catch (error) {
+        console.error("Retention rescue email failed", {
+          storeId,
+          message: error?.message || String(error)
+        });
+      }
     }
     return null;
   });

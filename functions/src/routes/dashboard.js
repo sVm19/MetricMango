@@ -1,5 +1,8 @@
 const express = require("express");
 const admin = require("firebase-admin");
+const { computeRestockSuggestions } = require("../services/restockService");
+const { buildSkuAnalytics } = require("../services/skuAnalyticsService");
+const { resolveInventorySettings } = require("../services/inventorySettingsService");
 
 const router = express.Router();
 const TRIAL_DAYS = 7;
@@ -266,6 +269,55 @@ router.get("/products", async (req, res) => {
   } catch (error) {
     console.error("Products error:", error);
     return res.status(500).json({ error: "Failed to load products" });
+  }
+});
+
+router.get("/sku-analytics", async (req, res) => {
+  try {
+    const { storeId } = req;
+    if (!storeId) {
+      return res.status(400).json({ error: "Missing storeId" });
+    }
+
+    const db = admin.firestore();
+    const startDate = createDateKey(addDays(new Date(), -29));
+    const [productsSnap, salesSnap, restockData] = await Promise.all([
+      db.collection("products").where("storeId", "==", storeId).get(),
+      db.collection("daily_sales")
+        .where("storeId", "==", storeId)
+        .where("date", ">=", startDate)
+        .get(),
+      computeRestockSuggestions(storeId, {
+        storeSettings: resolveInventorySettings(req.store || {})
+      })
+    ]);
+
+    const products = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const salesByProduct = {};
+    salesSnap.forEach(doc => {
+      const data = doc.data() || {};
+      const productId = String(data.productId || "");
+      if (!productId) return;
+      if (!salesByProduct[productId]) {
+        salesByProduct[productId] = {};
+      }
+      salesByProduct[productId][String(data.date || "")] = Number(data.quantitySold || 0);
+    });
+
+    const restockByProductId = (restockData?.suggestions || []).reduce((acc, item) => {
+      acc[String(item.productId || "")] = item;
+      return acc;
+    }, {});
+
+    return res.json(buildSkuAnalytics({
+      products,
+      salesByProduct,
+      restockByProductId,
+      now: new Date()
+    }));
+  } catch (error) {
+    console.error("SKU analytics error:", error);
+    return res.status(500).json({ error: "Failed to load SKU analytics" });
   }
 });
 
