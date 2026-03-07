@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import Button from "../components/Button.jsx";
+const StoreAnalytics = React.lazy(() => import("../components/StoreAnalytics.jsx"));
 import { useNavigate } from "react-router-dom";
 import {
   exportRestockPlanCsv,
@@ -60,6 +61,89 @@ function formatDaysLeft(value) {
   return `~${days} days left`;
 }
 
+const RevenueChartBars = React.memo(({ revenueSeries, revenueWindow, impactCurrency, maxRevenueValue }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const chartRef = React.useRef(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    if (chartRef.current) observer.observe(chartRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const limitedSeries = React.useMemo(() => {
+    if (!isVisible) return [];
+    let points = revenueSeries;
+    if (points.length > 30) {
+      const step = Math.ceil(points.length / 30);
+      points = points.filter((_, i) => i % step === 0);
+    }
+    return points;
+  }, [revenueSeries, isVisible]);
+
+  return (
+    <div ref={chartRef} className="chart-bars" aria-label="Revenue trend chart">
+      {isVisible && limitedSeries.map((value, index) => (
+        <span
+          key={`revenue-bar-${revenueWindow}-${index + 1}`}
+          className="chart-bar"
+          title={`Day ${index + 1}: ${formatMoneyByCurrency(impactCurrency, value)}`}
+          style={{ height: `${Math.max(8, Math.round((Number(value || 0) / maxRevenueValue) * 100))}%` }}
+        />
+      ))}
+    </div>
+  );
+});
+
+const OrderSparkline = React.memo(({ momentumSeries, momentumWindow, maxSeriesValue }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const chartRef = React.useRef(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    if (chartRef.current) observer.observe(chartRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const limitedSeries = React.useMemo(() => {
+    if (!isVisible) return [];
+    let points = momentumSeries;
+    if (points.length > 30) {
+      const step = Math.ceil(points.length / 30);
+      points = points.filter((_, i) => i % step === 0);
+    }
+    return points;
+  }, [momentumSeries, isVisible]);
+
+  return (
+    <div ref={chartRef} className="momentum-sparkline" aria-label={`Order sparkline for ${momentumWindow} days`}>
+      {isVisible && limitedSeries.map((value, index) => (
+        <span
+          key={`momentum-bar-${index + 1}`}
+          className="momentum-sparkline-bar"
+          style={{ height: `${Math.max(12, Math.round((value / maxSeriesValue) * 100))}%` }}
+        />
+      ))}
+    </div>
+  );
+});
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { overview, loading: accessLoading, error: accessError, locked } = useAccess();
@@ -87,7 +171,7 @@ export default function Dashboard() {
   const [skuAnalyticsError, setSkuAnalyticsError] = useState("");
 
   useEffect(() => {
-    postRetentionHeartbeat("dashboard").catch(() => {});
+    postRetentionHeartbeat("dashboard").catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -342,7 +426,6 @@ export default function Dashboard() {
   // #6: Top Sales Performer — product with highest 7-day revenue from restock data
   const productList = [];
   if (momentum?.windows?.[7]) {
-    const w7 = momentum.windows[7];
     // Use restock suggestions to get per-product velocity and match names from stockoutRisks
     stockoutRisks.forEach(risk => {
       productList.push({ name: risk.skuName, daysLeft: risk.daysLeft });
@@ -539,6 +622,16 @@ export default function Dashboard() {
           </article>
         </div>
       )}
+
+      {/* 24-hour live analytics */}
+      {!isEmptyStore && !locked ? (
+        <>
+          <div className="section-divider" aria-hidden="true" />
+          <React.Suspense fallback={<div className="card"><div className="spinner"></div><p style={{ textAlign: 'center', marginTop: 16 }}>Loading live analytics...</p></div>}>
+            <StoreAnalytics impactCurrency={impactCurrency} />
+          </React.Suspense>
+        </>
+      ) : null}
 
       {/* #6: Top Sales Performer card */}
       {!isEmptyStore && !impactLoading && !momentumLoading && momentum?.windows?.[7] ? (
@@ -782,16 +875,12 @@ export default function Dashboard() {
                     {formatPercent(revenueTrendPercent)} vs previous {revenueWindow}d
                   </div>
                 </div>
-                <div className="chart-bars" aria-label="Revenue trend chart">
-                  {revenueSeries.map((value, index) => (
-                    <span
-                      key={`revenue-bar-${revenueWindow}-${index + 1}`}
-                      className="chart-bar"
-                      title={`Day ${index + 1}: ${formatMoneyByCurrency(impactCurrency, value)}`}
-                      style={{ height: `${Math.max(8, Math.round((Number(value || 0) / maxRevenueValue) * 100))}%` }}
-                    />
-                  ))}
-                </div>
+                <RevenueChartBars
+                  revenueSeries={revenueSeries}
+                  revenueWindow={revenueWindow}
+                  impactCurrency={impactCurrency}
+                  maxRevenueValue={maxRevenueValue}
+                />
                 <div className="chart-stats-row">
                   <div className="chart-stat-pill">
                     <span>Total</span>
@@ -914,15 +1003,11 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="momentum-sparkline" aria-label={`Order sparkline for ${momentumWindow} days`}>
-                  {momentumSeries.map((value, index) => (
-                    <span
-                      key={`momentum-bar-${index + 1}`}
-                      className="momentum-sparkline-bar"
-                      style={{ height: `${Math.max(12, Math.round((value / maxSeriesValue) * 100))}%` }}
-                    />
-                  ))}
-                </div>
+                <OrderSparkline
+                  momentumSeries={momentumSeries}
+                  momentumWindow={momentumWindow}
+                  maxSeriesValue={maxSeriesValue}
+                />
 
                 <p className="chart-caption">{momentumInsight}</p>
                 <p className="chart-caption">{momentumAction}</p>

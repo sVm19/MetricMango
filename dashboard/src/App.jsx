@@ -10,18 +10,19 @@ import {
   IconCircleCheck
 } from "@tabler/icons-react";
 import Button from "./components/Button.jsx";
-import DashboardPage from "./pages/Dashboard.jsx";
-import ProductsPage from "./pages/Products.jsx";
-import ForecastPage from "./pages/Forecast.jsx";
-import PricingPage from "./pages/Pricing.jsx";
-import PaymentPage from "./pages/Payment.jsx";
-import PrivacyPolicy from "./pages/PrivacyPolicy.jsx";
-import TermsOfService from "./pages/TermsOfService.jsx";
 import LeadMagnet from "./components/LeadMagnet.jsx";
 import { useAuth } from "./auth/AuthContext.jsx";
 import { useAccess } from "./access/AccessContext.jsx";
 import { connectShopifyStore, disconnectShopifyStore, getOnboardingStatus } from "./api.js";
 import { useEmbedded } from "./useEmbedded.js";
+
+const DashboardPage = React.lazy(() => import("./pages/Dashboard.jsx"));
+const ProductsPage = React.lazy(() => import("./pages/Products.jsx"));
+const ForecastPage = React.lazy(() => import("./pages/Forecast.jsx"));
+const PricingPage = React.lazy(() => import("./pages/Pricing.jsx"));
+const PaymentPage = React.lazy(() => import("./pages/Payment.jsx"));
+const PrivacyPolicy = React.lazy(() => import("./pages/PrivacyPolicy.jsx"));
+const TermsOfService = React.lazy(() => import("./pages/TermsOfService.jsx"));
 
 const THEME_MODE_KEY = "metric-mango.theme-mode";
 const THEME_MODE_SEQUENCE = ["light", "dark"];
@@ -276,7 +277,7 @@ function LandingPage({ themeMode, onToggleTheme }) {
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const aboutDropdownRef = useRef(null);
-  const howItWorksOpenRef = useRef(false);
+  const howItWorksOpenRef = useRef(null);
   const howItWorksScrollTimerRef = useRef(null);
   const howItWorksCloseTimerRef = useRef(null);
   const resolvedTheme = resolveThemeMode(themeMode);
@@ -1068,58 +1069,66 @@ export default function App() {
   }, [themeMode]);
 
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage themeMode={themeMode} onToggleTheme={() => setThemeMode(current => nextThemeMode(current))} />} />
-      <Route path="/signin" element={<PublicOnlyRoute><AuthPage mode={forgotMode ? "forgot" : "signin"} /></PublicOnlyRoute>} />
-      <Route path="/signup" element={<PublicOnlyRoute><AuthPage mode="signup" /></PublicOnlyRoute>} />
+    <React.Suspense fallback={
+      <div className="auth-shell">
+        <section className="auth-card auth-loading-card">
+          <div className="spinner" aria-label="Loading page..." />
+        </section>
+      </div>
+    }>
+      <Routes>
+        <Route path="/" element={<LandingPage themeMode={themeMode} onToggleTheme={() => setThemeMode(current => nextThemeMode(current))} />} />
+        <Route path="/signin" element={<PublicOnlyRoute><AuthPage mode={forgotMode ? "forgot" : "signin"} /></PublicOnlyRoute>} />
+        <Route path="/signup" element={<PublicOnlyRoute><AuthPage mode="signup" /></PublicOnlyRoute>} />
 
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute>
-            <DashboardLayout themeMode={themeMode} onToggleTheme={() => setThemeMode(current => nextThemeMode(current))} />
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<DashboardPage />} />
-        <Route path="products" element={<ProductsPage />} />
-        <Route path="forecast" element={<ForecastPage />} />
-        <Route path="pricing" element={<PricingPage />} />
-        <Route path="payment/:storeType" element={<PaymentPage />} />
-        <Route path="onboarding" element={<OnboardingPage />} />
-      </Route>
-      <Route path="/privacy-policy" element={
-        <PublicOnlyRoute>
-          <div className="lp-shell">
-            <header className="topbar">
-              <div className="topbar-left">
-                <Link to="/" className="brand brand-badge">
-                  <img src="/logo.svg" alt="Metric Mango Logo" className="brand-logo" width="28" height="28" />
-                  <span className="brand-name">Metric Mango</span>
-                </Link>
-              </div>
-            </header>
-            <PrivacyPolicy />
-          </div>
-        </PublicOnlyRoute>
-      } />
-      <Route path="/terms-of-service" element={
-        <PublicOnlyRoute>
-          <div className="lp-shell">
-            <header className="topbar">
-              <div className="topbar-left">
-                <Link to="/" className="brand brand-badge">
-                  <img src="/logo.svg" alt="Metric Mango Logo" className="brand-logo" width="28" height="28" />
-                  <span className="brand-name">Metric Mango</span>
-                </Link>
-              </div>
-            </header>
-            <TermsOfService />
-          </div>
-        </PublicOnlyRoute>
-      } />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <DashboardLayout themeMode={themeMode} onToggleTheme={() => setThemeMode(current => nextThemeMode(current))} />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<DashboardPage />} />
+          <Route path="products" element={<ProductsPage />} />
+          <Route path="forecast" element={<ForecastPage />} />
+          <Route path="pricing" element={<PricingPage />} />
+          <Route path="payment/:storeType" element={<PaymentPage />} />
+          <Route path="onboarding" element={<OnboardingPage />} />
+        </Route>
+        <Route path="/privacy-policy" element={
+          <PublicOnlyRoute>
+            <div className="lp-shell">
+              <header className="topbar">
+                <div className="topbar-left">
+                  <Link to="/" className="brand brand-badge">
+                    <img src="/logo.svg" alt="Metric Mango Logo" className="brand-logo" width="28" height="28" />
+                    <span className="brand-name">Metric Mango</span>
+                  </Link>
+                </div>
+              </header>
+              <PrivacyPolicy />
+            </div>
+          </PublicOnlyRoute>
+        } />
+        <Route path="/terms-of-service" element={
+          <PublicOnlyRoute>
+            <div className="lp-shell">
+              <header className="topbar">
+                <div className="topbar-left">
+                  <Link to="/" className="brand brand-badge">
+                    <img src="/logo.svg" alt="Metric Mango Logo" className="brand-logo" width="28" height="28" />
+                    <span className="brand-name">Metric Mango</span>
+                  </Link>
+                </div>
+              </header>
+              <TermsOfService />
+            </div>
+          </PublicOnlyRoute>
+        } />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </React.Suspense>
   );
 }

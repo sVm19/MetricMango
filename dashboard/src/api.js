@@ -336,6 +336,35 @@ function buildDummySkuAnalytics(datasetName = DUMMY_DATASET_NAME) {
   };
 }
 
+function buildDummyAnalyticsData(datasetName = DUMMY_DATASET_NAME) {
+  const dataset = DUMMY_DATASETS[resolveDummyDatasetName(datasetName)];
+  const hourlyRevenueTrend = [];
+  const now = new Date();
+  for (let i = 23; i >= 0; i--) {
+    const ts = new Date(now.getTime() - i * 60 * 60 * 1000);
+    hourlyRevenueTrend.push({
+      timestamp: ts.toISOString(),
+      revenue: Math.floor(Math.random() * 500) + 100, // random dummy value between 100-600
+      orders: Math.floor(Math.random() * 5) + 1
+    });
+  }
+  const revenueLast24Hours = hourlyRevenueTrend.reduce((acc, h) => acc + h.revenue, 0);
+  const totalOrders = hourlyRevenueTrend.reduce((acc, h) => acc + h.orders, 0);
+  const totalVisitors = totalOrders * 28;
+
+  return {
+    revenueLast24Hours,
+    totalOrders,
+    conversionRate: (totalOrders / totalVisitors) * 100,
+    topSellingProducts: dataset.products.slice(0, 5).map(p => ({
+      productId: p.id,
+      name: p.name,
+      quantitySold: Math.floor(Math.random() * 20) + 5
+    })).sort((a, b) => b.quantitySold - a.quantitySold),
+    hourlyRevenueTrend
+  };
+}
+
 function buildDummyPurchaseOrderCsv(datasetName, purchaseOrderId) {
   const selected = resolveDummyDatasetName(datasetName);
   const purchaseOrder = (dummyPurchaseOrdersState[selected] || []).find(item => item.id === purchaseOrderId);
@@ -588,6 +617,18 @@ async function requestDummy(path, options = {}) {
     const purchaseOrderId = pathname.split("/")[3];
     return parseJson ? { csv: buildDummyPurchaseOrderCsv(datasetName, purchaseOrderId) } : buildDummyPurchaseOrderCsv(datasetName, purchaseOrderId);
   }
+  if (pathname === "/analytics") return buildDummyAnalyticsData(datasetName);
+
+  if (pathname === "/dashboard/aggregated") {
+    const dataset = DUMMY_DATASETS[resolveDummyDatasetName(datasetName)];
+    return {
+      products: dataset.products,
+      momentum: dataset.momentum,
+      skuAnalytics: buildDummySkuAnalytics(datasetName),
+      analytics: buildDummyAnalyticsData(datasetName),
+      restockSuggestions: computeDummyRestock(datasetName)
+    };
+  }
 
   throw new ApiError(`Dummy mode has no handler for ${pathname}`, 404, { error: "not_found" });
 }
@@ -734,8 +775,25 @@ export function getOverview() {
   return request("/dashboard/overview");
 }
 
-export function getProducts() {
-  return request("/dashboard/products");
+let aggregatedCachePromise = null;
+let aggregatedCacheTime = 0;
+const AGGREGATED_TTL = 30000; // Cache for 30s to merge requests
+
+export async function getDashboardAggregated() {
+  if (aggregatedCachePromise && Date.now() - aggregatedCacheTime < AGGREGATED_TTL) {
+    return aggregatedCachePromise;
+  }
+  aggregatedCacheTime = Date.now();
+  aggregatedCachePromise = request("/dashboard/aggregated").catch(err => {
+    aggregatedCachePromise = null;
+    throw err;
+  });
+  return aggregatedCachePromise;
+}
+
+export async function getProducts() {
+  const data = await getDashboardAggregated();
+  return { products: data.products || [] };
 }
 
 export function getSuppliers() {
@@ -774,20 +832,23 @@ export function updateProductPlanning(productId, payload) {
   });
 }
 
-export function getOrderMomentum() {
-  return request("/dashboard/momentum");
+export async function getOrderMomentum() {
+  const data = await getDashboardAggregated();
+  return data.momentum;
 }
 
-export function getSkuAnalytics() {
-  return request("/dashboard/sku-analytics");
+export async function getSkuAnalytics() {
+  const data = await getDashboardAggregated();
+  return data.skuAnalytics;
 }
 
 export function getForecast() {
   return request("/forecast");
 }
 
-export function getRestockSuggestions() {
-  return request("/restock-suggestions");
+export async function getRestockSuggestions() {
+  const data = await getDashboardAggregated();
+  return data.restockSuggestions;
 }
 
 export function getPricing() {
@@ -796,6 +857,11 @@ export function getPricing() {
 
 export function getPurchaseOrders() {
   return request("/purchase-orders");
+}
+
+export async function getAnalytics() {
+  const data = await getDashboardAggregated();
+  return data.analytics;
 }
 
 export function createPurchaseOrderDraft(payload) {

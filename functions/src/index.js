@@ -16,6 +16,9 @@ const { computeRestockSuggestions } = require("./services/restockService");
 const { sendConfiguredLowStockAlertsForStore, sendLowStockAlertsForStore } = require("./services/lowStockAlertService");
 const { sendSalesSpikeAlertsForStore } = require("./services/salesSpikeAlertService");
 const { sendWeeklyActionPlanForStore } = require("./services/weeklyActionPlanService");
+const { syncShopifyMetricsForStore } = require("./services/shopifySyncService");
+const { generateWeeklySummaryForStore } = require("./services/weeklySummaryService");
+
 const { attachSupplierLinks, normalizeSupplierRecord } = require("./services/supplierService");
 const {
   buildPurchaseOrderDraft,
@@ -2691,6 +2694,22 @@ exports.weeklyInventoryActionPlan = functions.pubsub.schedule("0 14 * * 1")
     return null;
   });
 
+exports.hourlyShopifyAnalyticsSync = functions.pubsub.schedule("0 * * * *")
+  .timeZone("UTC")
+  .onRun(async () => {
+    const stores = await listScheduledInventoryStores();
+    console.info(`Running hourly Shopify metrics sync for ${stores.length} stores.`);
+    for (const doc of stores) {
+      const storeId = String(doc.id);
+      try {
+        await syncShopifyMetricsForStore(storeId);
+      } catch (error) {
+        console.error("Hourly metrics sync failed", { storeId, message: error?.message || String(error) });
+      }
+    }
+    return null;
+  });
+
 exports.dailyRetentionRescue = functions.pubsub.schedule("0 15 * * *")
   .timeZone("UTC")
   .onRun(async () => {
@@ -2705,6 +2724,25 @@ exports.dailyRetentionRescue = functions.pubsub.schedule("0 15 * * *")
         await sendReengagementEmailForStore(storeId, new Date());
       } catch (error) {
         console.error("Retention rescue email failed", {
+          storeId,
+          message: error?.message || String(error)
+        });
+      }
+    }
+    return null;
+  });
+
+exports.weeklyStoreAnalyticsSummary = functions.pubsub.schedule("0 1 * * 1")
+  .timeZone("UTC")
+  .onRun(async () => {
+    const stores = await listScheduledInventoryStores();
+    console.info(`Running weekly store analytics summary for ${stores.length} stores.`);
+    for (const doc of stores) {
+      const storeId = String(doc.id);
+      try {
+        await generateWeeklySummaryForStore(storeId, new Date());
+      } catch (error) {
+        console.error("Weekly store analytics summary failed", {
           storeId,
           message: error?.message || String(error)
         });

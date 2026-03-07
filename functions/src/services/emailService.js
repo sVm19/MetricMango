@@ -2,7 +2,7 @@ const { getEmailConfig } = require("../utils/runtimeConfig");
 
 const DEFAULT_FROM = "Metric Mango <alerts@metricmango.com>";
 
-async function sendEmail({ to, subject, text }) {
+async function sendEmail({ to, subject, text, html }) {
   // Prefer Firebase Functions config; fall back to env for local development.
   const config = getEmailConfig();
   const apiKey = config.resend.apiKey;
@@ -11,18 +11,26 @@ async function sendEmail({ to, subject, text }) {
     throw new Error("Missing RESEND_API_KEY");
   }
 
+  const payload = {
+    from,
+    to,
+    subject,
+  };
+
+  if (html) {
+    payload.html = html;
+  }
+  if (text) {
+    payload.text = text;
+  }
+
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({
-      from,
-      to,
-      subject,
-      text
-    })
+    body: JSON.stringify(payload)
   });
 
   if (!response.ok) {

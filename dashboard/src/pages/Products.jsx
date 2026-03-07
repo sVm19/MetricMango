@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Button from "../components/Button.jsx";
 import EmptyState from "../components/EmptyState.jsx";
-import ProductTable from "../components/ProductTable.jsx";
+const ProductTable = React.lazy(() => import("../components/ProductTable.jsx"));
 import {
   createPurchaseOrderDraft,
   createSupplier,
@@ -96,7 +96,7 @@ export default function Products() {
   const [exportError, setExportError] = useState("");
 
   useEffect(() => {
-    postRetentionHeartbeat("products").catch(() => {});
+    postRetentionHeartbeat("products").catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -507,7 +507,9 @@ export default function Products() {
           <EmptyState title="Planning tools are locked" description="Your trial has expired. Upgrade to continue managing inventory settings, suppliers, and purchase orders." />
         ) : null}
         {exportError ? <EmptyState title="Unable to export CSV right now" description={exportError} /> : null}
-        <ProductTable rows={rows} suppliers={suppliers} locked={locked} onPlanningUpdated={handlePlanningUpdated} />
+        <React.Suspense fallback={<div className="table-loading">Loading products...</div>}>
+          <ProductTable rows={rows} suppliers={suppliers} locked={locked} onPlanningUpdated={handlePlanningUpdated} />
+        </React.Suspense>
         {!locked && rows.length === 0 ? (
           <EmptyState title="No products yet" description="We'll show insights once your first order arrives. Create a test order in Shopify to populate products." />
         ) : null}
