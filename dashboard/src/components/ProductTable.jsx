@@ -94,16 +94,16 @@ export default function ProductTable({ rows, suppliers, locked, onPlanningUpdate
             const isLowStock = String(row.suggestion || "").toUpperCase() === "RESTOCK";
             return (
               <tr key={row.id} className={isLowStock ? "low-stock" : ""}>
-                <td>
+                <td data-label="Product">
                   <div className="product-name-cell">
                     <strong>{row.name}</strong>
                     <span className={`status ${isLowStock ? "status-alert" : "status-safe"}`}>{row.suggestion || "SAFE"}</span>
                   </div>
                   {rowErrors[row.id] ? <div className="row-inline-error">{rowErrors[row.id]}</div> : null}
                 </td>
-                <td>{formatMoney(row.price)}</td>
-                <td>{row.currentStock}</td>
-                <td>
+                <td data-label="Price">{formatMoney(row.price)}</td>
+                <td data-label="Stock">{row.currentStock}</td>
+                <td data-label="Lead Time">
                   <input
                     className="table-input"
                     type="number"
@@ -114,7 +114,7 @@ export default function ProductTable({ rows, suppliers, locked, onPlanningUpdate
                     disabled={locked}
                   />
                 </td>
-                <td>
+                <td data-label="Supplier">
                   <select
                     className="table-input"
                     value={draft.supplierId ?? ""}
@@ -134,9 +134,9 @@ export default function ProductTable({ rows, suppliers, locked, onPlanningUpdate
                     <span className="table-input-hint">Legacy supplier: {draft.supplierName}</span>
                   ) : null}
                 </td>
-                <td>{formatStockCover(row.daysUntilStockout)}</td>
-                <td className="metric">{row.recommendedReorderQty ?? 0}</td>
-                <td>
+                <td data-label="Stock Cover">{formatStockCover(row.daysUntilStockout)}</td>
+                <td data-label="Suggested Reorder" className="metric">{row.recommendedReorderQty ?? 0}</td>
+                <td data-label="Save">
                   <Button
                     type="button"
                     variant="secondary"

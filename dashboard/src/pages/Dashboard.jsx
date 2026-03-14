@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import Button from "../components/Button.jsx";
-const StoreAnalytics = React.lazy(() => import("../components/StoreAnalytics.jsx"));
 import { useNavigate } from "react-router-dom";
 import {
   exportRestockPlanCsv,
@@ -13,6 +12,23 @@ import {
   postRetentionHeartbeat
 } from "../api.js";
 import { useAccess } from "../access/AccessContext.jsx";
+import { IconSquareArrowUp, IconSquareArrowDown, IconAlertTriangle, IconTrendingDown, IconTrendingUp, IconX, IconAlertCircle, IconCircleCheck, IconRocket } from "@tabler/icons-react";
+
+const StoreAnalytics = React.lazy(() => import("../components/StoreAnalytics.jsx"));
+
+function TrendBadge({ direction }) {
+  const isUp = direction !== "down";
+  const Icon = isUp ? IconSquareArrowUp : IconSquareArrowDown;
+  const label = isUp ? "Trending" : "Slow";
+  const badgeClass = isUp ? "trend-badge trend-badge-up" : "trend-badge trend-badge-down";
+
+  return (
+    <div className={badgeClass} aria-label={`${label} trend`}>
+      <Icon size={16} stroke={2.5} />
+      <span>{label}</span>
+    </div>
+  );
+}
 
 function formatMoney(value) {
   return new Intl.NumberFormat("en-IN", {
@@ -144,7 +160,156 @@ const OrderSparkline = React.memo(({ momentumSeries, momentumWindow, maxSeriesVa
   );
 });
 
-export default function Dashboard() {
+const AnimatedNumber = React.memo(({ value, formatter, duration = 1000, className = "" }) => {
+  const [displayValue, setDisplayValue] = useState(0);
+
+  useEffect(() => {
+    let start = null;
+    let animationFrameId;
+    const endValue = Number(value) || 0;
+
+    if (endValue === 0) {
+      const timer = setTimeout(() => setDisplayValue(0), 0);
+      return () => clearTimeout(timer);
+    }
+
+    const step = (timestamp) => {
+      if (!start) start = timestamp;
+      const progress = Math.min((timestamp - start) / duration, 1);
+      const easeOutQuart = 1 - Math.pow(1 - progress, 4);
+      
+      setDisplayValue(endValue * easeOutQuart);
+      
+      if (progress < 1) {
+        animationFrameId = window.requestAnimationFrame(step);
+      } else {
+        setDisplayValue(endValue);
+      }
+    };
+    
+    animationFrameId = window.requestAnimationFrame(step);
+
+    return () => {
+      if (animationFrameId) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [value, duration]);
+
+  const formatted = formatter ? formatter(displayValue) : Math.round(displayValue);
+  
+  return <span className={className}>{formatted}</span>;
+});
+
+const SmartAlertBanner = React.memo(({ stockoutRisks, revenueTrendPercent, momentumTrend, topPerformerByVelocity }) => {
+  const [dismissed, setDismissed] = useState(false);
+
+  const alert = React.useMemo(() => {
+    const closeStockouts = (stockoutRisks || []).filter(r => Number(r.daysLeft || 999) <= 1);
+    if (closeStockouts.length > 0) {
+      return {
+        type: 'stock',
+        icon: <IconAlertTriangle size={20} color="#f59e0b" />,
+        message: `${closeStockouts.length} product${closeStockouts.length > 1 ? 's' : ''} may run out of stock within 24 hours.`,
+        bgColor: 'rgba(245, 158, 11, 0.1)',
+        borderColor: 'rgba(245, 158, 11, 0.3)',
+      };
+    }
+    if (revenueTrendPercent <= -10) {
+      return {
+        type: 'revenue',
+        icon: <IconTrendingDown size={20} color="#ef4444" />,
+        message: `Revenue dropped ${Math.abs(Math.round(revenueTrendPercent))}% compared to the previous period.`,
+        bgColor: 'rgba(239, 68, 68, 0.1)',
+        borderColor: 'rgba(239, 68, 68, 0.3)',
+      };
+    }
+    if (topPerformerByVelocity && momentumTrend > 5) {
+      return {
+        type: 'opportunity',
+        icon: <IconTrendingUp size={20} color="#10b981" />,
+        message: `${topPerformerByVelocity.skuName} is trending and selling faster than usual.`,
+        bgColor: 'rgba(16, 185, 129, 0.1)',
+        borderColor: 'rgba(16, 185, 129, 0.3)',
+      };
+    }
+    return null;
+  }, [stockoutRisks, revenueTrendPercent, momentumTrend, topPerformerByVelocity]);
+
+  if (!alert || dismissed) return null;
+
+  return (
+    <div 
+      className="smart-alert-banner"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '16px 20px',
+        background: alert.bgColor,
+        border: `1px solid ${alert.borderColor}`,
+        borderRadius: '12px',
+        marginBottom: '24px',
+        animation: 'fadeUpPage 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+      }}
+      role="alert"
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {alert.icon}
+        <span style={{ fontWeight: 600, color: 'var(--dash-ink)' }}>{alert.message}</span>
+      </div>
+      <button 
+        onClick={() => setDismissed(true)} 
+        style={{ 
+          background: 'transparent', 
+          border: 'none', 
+          cursor: 'pointer', 
+          display: 'flex', 
+          alignItems: 'center',
+          color: 'var(--dash-ink-soft)',
+          padding: '4px',
+        }}
+        aria-label="Dismiss alert"
+      >
+        <IconX size={18} />
+      </button>
+    </div>
+  );
+});
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Dashboard Render Error Caught:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="page dashboard-page" style={{ padding: '40px', textAlign: 'center' }}>
+          <h2>Something went wrong loading the dashboard.</h2>
+          <p style={{ color: 'var(--dash-ink-soft)', marginTop: '8px' }}>
+            Please refresh the page to try again.
+          </p>
+          <Button type="button" onClick={() => window.location.reload()} style={{ marginTop: '24px' }}>
+            Refresh Page
+          </Button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function DashboardComponent() {
   const navigate = useNavigate();
   const { overview, loading: accessLoading, error: accessError, locked } = useAccess();
   const [pricing, setPricing] = useState(null);
@@ -365,7 +530,21 @@ export default function Dashboard() {
     };
   }, [locked]);
 
-  if (accessLoading) return <div className="empty">Loading overview...</div>;
+  const fullPageSkeleton = (
+    <div className="page dashboard-page animate-pulse">
+      <div className="page-header" style={{ marginBottom: '24px' }}>
+        <div className="skeleton skeleton-title"></div>
+        <div className="skeleton skeleton-text" style={{ width: '40%' }}></div>
+      </div>
+      <div className="summary-grid">
+        <div className="stat-card skeleton skeleton-card"></div>
+        <div className="stat-card skeleton skeleton-card"></div>
+        <div className="stat-card skeleton skeleton-card"></div>
+      </div>
+    </div>
+  );
+
+  if (accessLoading) return fullPageSkeleton;
   if (accessError && !locked) return <div className="empty">{accessError}</div>;
 
   const safeOverview = overview || {
@@ -453,7 +632,7 @@ export default function Dashboard() {
 
   return (
     <div className="page dashboard-page">
-      {safeOverview.trial?.active ? (
+      {safeOverview?.trial?.active ? (
         <div className="trial-banner" role="status" aria-live="polite">
           One plan. All features. {pricing ? `7 days free. Then ${formatPrice(pricing.currency, pricing.amount)}/month.` : "7 days free."}
         </div>
@@ -465,11 +644,20 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {!isEmptyStore && !impactLoading && !locked ? (
+        <SmartAlertBanner
+          stockoutRisks={stockoutRisks}
+          revenueTrendPercent={revenueTrendPercent}
+          momentumTrend={momentumTrend}
+          topPerformerByVelocity={topPerformerByVelocity}
+        />
+      ) : null}
+
       {/* #5: Today's Action callout */}
       {!isEmptyStore && !impactLoading && !locked ? (
         <section className={`today-action-callout today-action-${todayActionType}`} role="alert" aria-live="polite">
-          <div className="today-action-icon">
-            {todayActionType === "critical" ? "🔴" : todayActionType === "warning" ? "🟡" : "✅"}
+          <div className={`action-icon-btn action-icon-${todayActionType}`}>
+            {todayActionType === "critical" ? <IconAlertTriangle size={22} /> : todayActionType === "warning" ? <IconAlertCircle size={22} /> : <IconCircleCheck size={22} />}
           </div>
           <div className="today-action-body">
             <strong className="today-action-label">
@@ -536,7 +724,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <>
-                <div className="stat-value">{formatMoney(totalRevenue)}</div>
+                <div className="stat-value"><AnimatedNumber value={totalRevenue} formatter={formatMoney} className="glow-metric" /></div>
                 <div className="summary-meta-grid">
                   <div className="summary-meta-item">
                     <span className="stat-label">Last 7d</span>
@@ -568,7 +756,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <>
-                <div className="stat-value">{formatPlainNumber(totalOrders)}</div>
+                <div className="stat-value"><AnimatedNumber value={totalOrders} formatter={formatPlainNumber} className="glow-metric" /></div>
                 <div className="summary-meta-grid">
                   <div className="summary-meta-item">
                     <span className="stat-label">Last 7d</span>
@@ -597,16 +785,16 @@ export default function Dashboard() {
               </div>
             ) : (
               <>
-                <div className="stat-value">{formatPlainNumber(impact.atRiskSkus)}</div>
+                <div className="stat-value"><AnimatedNumber value={impact.atRiskSkus} formatter={formatPlainNumber} className="glow-metric-warning" /></div>
                 <div className="stockout-risk-list">
-                  {topStockoutRisks.map(risk => (
-                    <div key={risk.productId} className="summary-meta-item stockout-risk-item">
+                  {(topStockoutRisks || []).map(risk => (
+                    <div key={risk.productId || Math.random()} className="summary-meta-item stockout-risk-item">
                       <div className="stockout-risk-main">
                         <span
                           className={`stockout-risk-dot ${Number(risk.daysLeft || 0) <= 3 ? "stockout-risk-critical" : "stockout-risk-warning"}`}
                           aria-hidden="true"
                         />
-                        <span className="stockout-risk-name" title={risk.skuName}>{risk.skuName}</span>
+                        <span className="stockout-risk-name" title={risk.skuName || "Unknown"}>{risk.skuName || "Unknown SKU"}</span>
                       </div>
                       <span className="stockout-risk-days">{formatDaysLeft(risk.daysLeft)}</span>
                     </div>
@@ -637,11 +825,16 @@ export default function Dashboard() {
       {!isEmptyStore && !impactLoading && !momentumLoading && momentum?.windows?.[7] ? (
         <section className="card top-performer-card">
           <div className="top-performer-head">
-            <div>
-              <p className="stat-label">🏆 Top Mover This Week</p>
-              <h3 className="top-performer-title">
-                {topPerformerByVelocity ? topPerformerByVelocity.skuName : "—"}
-              </h3>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+              <div className="action-icon-btn top-mover-icon">
+                <IconRocket size={22} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <p className="stat-label" style={{ margin: 0 }}>Top Mover This Week</p>
+                <h3 className="top-performer-title" style={{ margin: 0 }}>
+                  {topPerformerByVelocity ? topPerformerByVelocity.skuName : "—"}
+                </h3>
+              </div>
             </div>
             <div className="top-performer-stats">
               <div className="top-performer-stat">
@@ -702,12 +895,12 @@ export default function Dashboard() {
             </article>
             <article className={`stat-card impact-card impact-${unitsRiskLevel}`}>
               <div className="stat-label">Estimated Units Short</div>
-              <div className="stat-value">{impact.unitsShort}</div>
+              <div className="stat-value"><AnimatedNumber value={impact.unitsShort} formatter={formatPlainNumber} /></div>
               <div className="stat-helper">Demand gap over next lead-time window.</div>
             </article>
             <article className={`stat-card impact-card impact-${revenueRiskLevel}`}>
               <div className="stat-label">Revenue At Risk</div>
-              <div className="stat-value">{formatMoneyByCurrency(impactCurrency, impact.revenueAtRisk)}</div>
+              <div className="stat-value"><AnimatedNumber value={impact.revenueAtRisk} formatter={(val) => formatMoneyByCurrency(impactCurrency, val)} className="glow-metric-danger" /></div>
               <div className="stat-helper">Estimated from units short x product price.</div>
             </article>
           </div>
@@ -745,18 +938,18 @@ export default function Dashboard() {
         ) : null}
         {!impactLoading && actionPlanRows.length > 0 ? (
           <div className="action-plan-list">
-            {actionPlanRows.map(item => (
-              <article key={item.productId} className="action-plan-item">
+            {(actionPlanRows || []).map((item, index) => (
+              <article key={item?.productId || `row-${index}`} className="action-plan-item">
                 <div>
-                  <h3>{item.skuName}</h3>
+                  <h3>{item?.skuName || "Unknown Product"}</h3>
                   <p>
-                    {item.supplierName ? `Supplier: ${item.supplierName}` : "Supplier not set"}
+                    {item?.supplierName ? `Supplier: ${item.supplierName}` : "Supplier not set"}
                     {" • "}
-                    {Number.isFinite(item.daysLeft) ? `~${Math.max(0, Math.ceil(item.daysLeft))} days of stock cover` : "No sales velocity"}
+                    {Number.isFinite(item?.daysLeft) ? `~${Math.max(0, Math.ceil(item.daysLeft))} days of stock cover` : "No sales velocity"}
                   </p>
                 </div>
                 <div className="action-plan-metrics">
-                  <span>Reorder {item.reorderQty}</span>
+                  <span>Reorder {item.reorderQty || 0}</span>
                   <strong>{formatMoneyByCurrency(impactCurrency, item.revenueAtRisk)}</strong>
                 </div>
               </article>
@@ -804,25 +997,25 @@ export default function Dashboard() {
             <div className="sku-analytics-lists">
               <div className="sku-analytics-column">
                 <h3>Fast-Moving SKUs</h3>
-                {(skuAnalytics.fastMovers || []).slice(0, 5).map(item => (
-                  <article key={`fast-${item.productId}`} className="sku-analytics-item">
+                {(skuAnalytics?.fastMovers || []).slice(0, 5).map((item, index) => (
+                  <article key={`fast-${item?.productId || index}`} className="sku-analytics-item">
                     <div>
-                      <strong>{item.name}</strong>
-                      <p>{item.avgDailySales7.toFixed(1)} units/day • {item.sellThroughRate30.toFixed(1)}% sell-through</p>
+                      <strong>{item?.name || "Unknown"}</strong>
+                      <p>{Number(item?.avgDailySales7 || 0).toFixed(1)} units/day • {Number(item?.sellThroughRate30 || 0).toFixed(1)}% sell-through</p>
                     </div>
-                    <span className={`status ${item.trendDirection === "up" ? "status-safe" : "status-neutral"}`}>{item.trendDirection}</span>
+                    <TrendBadge direction={item?.trendDirection} />
                   </article>
                 ))}
               </div>
               <div className="sku-analytics-column">
                 <h3>Slow-Moving SKUs</h3>
-                {(skuAnalytics.slowMovers || []).slice(0, 5).map(item => (
-                  <article key={`slow-${item.productId}`} className="sku-analytics-item">
+                {(skuAnalytics?.slowMovers || []).slice(0, 5).map((item, index) => (
+                  <article key={`slow-${item?.productId || index}`} className="sku-analytics-item">
                     <div>
-                      <strong>{item.name}</strong>
-                      <p>{item.avgDailySales7.toFixed(1)} units/day • {Number.isFinite(item.stockCoverDays) ? `~${Math.ceil(item.stockCoverDays)} days cover` : "No sales velocity"}</p>
+                      <strong>{item?.name || "Unknown"}</strong>
+                      <p>{Number(item?.avgDailySales7 || 0).toFixed(1)} units/day • {Number.isFinite(item?.stockCoverDays) ? `~${Math.ceil(item.stockCoverDays)} days cover` : "No sales velocity"}</p>
                     </div>
-                    <span className={`status ${item.trendDirection === "down" ? "status-alert" : "status-neutral"}`}>{item.trendDirection}</span>
+                    <TrendBadge direction={item?.trendDirection} />
                   </article>
                 ))}
               </div>
@@ -1057,5 +1250,13 @@ export default function Dashboard() {
         </section>
       ) : null}
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <ErrorBoundary>
+      <DashboardComponent />
+    </ErrorBoundary>
   );
 }

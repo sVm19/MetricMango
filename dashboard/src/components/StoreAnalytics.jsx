@@ -103,7 +103,7 @@ export default function StoreAnalytics({ impactCurrency = "USD" }) {
         return (
             <section className="card dashboard-section">
                 <h2>Store Analytics (24h)</h2>
-                <EmptyState title="Real-time syncing..." description="Waiting for the latest store data..." />
+                <EmptyState title="Loading real-time syncing..." description="Waiting for the latest store data..." />
             </section>
         );
     }
@@ -163,22 +163,24 @@ export default function StoreAnalytics({ impactCurrency = "USD" }) {
                     {topSellingProducts.length === 0 ? (
                         <EmptyState title="No sales yet" description="Products sold over the last 24h will show here." />
                     ) : (
-                        <table className="products-table" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '16px' }}>
-                            <thead>
-                                <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>
-                                    <th style={{ padding: '8px 0' }}>Product</th>
-                                    <th style={{ padding: '8px 0', textAlign: 'right' }}>Qty Sold</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {topSellingProducts.map(product => (
-                                    <tr key={product.productId} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                        <td style={{ padding: '12px 0', fontSize: '0.95rem' }}>{product.name}</td>
-                                        <td style={{ padding: '12px 0', textAlign: 'right', fontWeight: 'bold' }}>{product.quantitySold}</td>
+                        <div className="table-wrap">
+                            <table className="products-table" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '16px' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '1px solid var(--color-border)', textAlign: 'left', fontSize: '0.85rem' }}>
+                                        <th style={{ padding: '8px 0' }}>Product</th>
+                                        <th style={{ padding: '8px 0', textAlign: 'right' }}>Qty Sold</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    {topSellingProducts.map(product => (
+                                        <tr key={product.productId} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                                            <td data-label="Product" style={{ padding: '12px 0', fontSize: '0.95rem' }}>{product.name}</td>
+                                            <td data-label="Qty Sold" style={{ padding: '12px 0', textAlign: 'right', fontWeight: 'bold' }}>{product.quantitySold}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     )}
                 </article>
 

@@ -11,7 +11,7 @@ export default function Forecast() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    postRetentionHeartbeat("forecast").catch(() => {});
+    postRetentionHeartbeat("forecast").catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -44,9 +44,20 @@ export default function Forecast() {
     };
   }, [locked]);
 
-  if (accessLoading) return <div className="empty">Loading forecast...</div>;
+  const fullPageSkeleton = (
+    <div className="page dashboard-page animate-pulse">
+      <div className="page-header" style={{ marginBottom: '24px' }}>
+        <div className="skeleton skeleton-title"></div>
+        <div className="skeleton skeleton-text" style={{ width: '40%' }}></div>
+      </div>
+      <div className="card dashboard-section skeleton skeleton-card"></div>
+      <div className="card dashboard-section skeleton skeleton-card"></div>
+    </div>
+  );
+
+  if (accessLoading) return fullPageSkeleton;
   if (accessError && !locked) return <div className="empty">{accessError}</div>;
-  if (loading && !locked) return <div className="empty">Loading forecast...</div>;
+  if (loading && !locked) return fullPageSkeleton;
   if (error && !locked) return <div className="empty">{error}</div>;
   const hasAnyData = forecast.length > 0 || restock.length > 0;
 
@@ -96,11 +107,11 @@ export default function Forecast() {
                 <tbody>
                   {forecast.map(item => (
                     <tr key={item.productId}>
-                      <td>{item.productId}</td>
-                      <td className="metric">{item.forecast.ma7.toFixed(1)}</td>
-                      <td>{item.forecast.ma14.toFixed(1)}</td>
-                      <td>{item.forecast.ma30.toFixed(1)}</td>
-                      <td>{Math.round(item.forecast.next7Days)}</td>
+                      <td data-label="Product">{item.productId}</td>
+                      <td data-label="Avg (7d)" className="metric">{item.forecast.ma7.toFixed(1)}</td>
+                      <td data-label="Avg (14d)">{item.forecast.ma14.toFixed(1)}</td>
+                      <td data-label="Avg (30d)">{item.forecast.ma30.toFixed(1)}</td>
+                      <td data-label="Next 7d Total">{Math.round(item.forecast.next7Days)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -130,10 +141,10 @@ export default function Forecast() {
                 <tbody>
                   {restock.map(item => (
                     <tr key={item.productId}>
-                      <td>{item.productId}</td>
-                      <td className="metric">{item.expectedDemand.toFixed(1)}</td>
-                      <td>{item.currentStock}</td>
-                      <td>
+                      <td data-label="Product">{item.productId}</td>
+                      <td data-label="Expected Demand" className="metric">{item.expectedDemand.toFixed(1)}</td>
+                      <td data-label="Current Stock">{item.currentStock}</td>
+                      <td data-label="Status">
                         <span className={`status ${item.suggestion === "RESTOCK" ? "status-alert" : "status-safe"}`}>
                           {item.suggestion}
                         </span>
@@ -149,3 +160,4 @@ export default function Forecast() {
     </div>
   );
 }
+

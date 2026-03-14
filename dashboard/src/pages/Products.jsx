@@ -274,9 +274,20 @@ export default function Products() {
     }
   }
 
-  if (accessLoading) return <div className="empty">Loading products...</div>;
+  const fullPageSkeleton = (
+    <div className="page dashboard-page animate-pulse">
+      <div className="page-header" style={{ marginBottom: '24px' }}>
+        <div className="skeleton skeleton-title"></div>
+        <div className="skeleton skeleton-text" style={{ width: '40%' }}></div>
+      </div>
+      <div className="card dashboard-section skeleton skeleton-card"></div>
+      <div className="card dashboard-section skeleton skeleton-card"></div>
+    </div>
+  );
+
+  if (accessLoading) return fullPageSkeleton;
   if (accessError && !locked) return <div className="empty">{accessError}</div>;
-  if (loading && !locked) return <div className="empty">Loading products...</div>;
+  if (loading && !locked) return fullPageSkeleton;
   if (error && !locked) return <div className="empty">{error}</div>;
 
   return (
@@ -507,7 +518,7 @@ export default function Products() {
           <EmptyState title="Planning tools are locked" description="Your trial has expired. Upgrade to continue managing inventory settings, suppliers, and purchase orders." />
         ) : null}
         {exportError ? <EmptyState title="Unable to export CSV right now" description={exportError} /> : null}
-        <React.Suspense fallback={<div className="table-loading">Loading products...</div>}>
+        <React.Suspense fallback={<div className="skeleton skeleton-card animate-pulse" style={{ height: '300px' }}></div>}>
           <ProductTable rows={rows} suppliers={suppliers} locked={locked} onPlanningUpdated={handlePlanningUpdated} />
         </React.Suspense>
         {!locked && rows.length === 0 ? (

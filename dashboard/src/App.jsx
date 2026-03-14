@@ -618,17 +618,33 @@ function LandingPage({ themeMode, onToggleTheme }) {
             <p>Start with a 7-day free trial and get full access from day one.</p>
             <div className="mm-pricing-grid">
               {detectedStore === 'india' ? (
-                <article className="mm-pricing-item" onClick={() => { setSelectedStore('india'); openAuthModal('signup'); }} style={{ cursor: 'pointer' }}>
+                <article className="mm-pricing-item mm-pricing-item--prominent" onClick={() => { setSelectedStore('india'); openAuthModal('signup'); }} style={{ cursor: 'pointer' }}>
+                  <div className="mm-pricing-popular">Most Popular</div>
                   <h3>India Stores</h3>
                   <p className="mm-pricing-amount">₹499<span>/month</span></p>
                   <p className="mm-pricing-note">For merchants billed in INR.</p>
+                  <ul className="mm-pricing-features">
+                    <li><IconCircleCheck size={18} stroke={2} className="mm-check-icon" aria-hidden="true" /> Full analytics</li>
+                    <li><IconCircleCheck size={18} stroke={2} className="mm-check-icon" aria-hidden="true" /> Sales forecasting</li>
+                    <li><IconCircleCheck size={18} stroke={2} className="mm-check-icon" aria-hidden="true" /> Restock suggestions</li>
+                    <li><IconCircleCheck size={18} stroke={2} className="mm-check-icon" aria-hidden="true" /> Active email alerts</li>
+                  </ul>
+                  <button className="mm-pricing-cta" type="button" aria-label="Start free trial for India Stores">Start free trial</button>
                 </article>
               ) : null}
               {detectedStore === 'global' ? (
-                <article className="mm-pricing-item" onClick={() => { setSelectedStore('global'); openAuthModal('signup'); }} style={{ cursor: 'pointer' }}>
+                <article className="mm-pricing-item mm-pricing-item--prominent" onClick={() => { setSelectedStore('global'); openAuthModal('signup'); }} style={{ cursor: 'pointer' }}>
+                  <div className="mm-pricing-popular">Most Popular</div>
                   <h3>Global Stores</h3>
                   <p className="mm-pricing-amount">$9<span>/month</span></p>
                   <p className="mm-pricing-note">For non-India merchants billed in USD.</p>
+                  <ul className="mm-pricing-features">
+                    <li><IconCircleCheck size={18} stroke={2} className="mm-check-icon" aria-hidden="true" /> Full analytics</li>
+                    <li><IconCircleCheck size={18} stroke={2} className="mm-check-icon" aria-hidden="true" /> Sales forecasting</li>
+                    <li><IconCircleCheck size={18} stroke={2} className="mm-check-icon" aria-hidden="true" /> Restock suggestions</li>
+                    <li><IconCircleCheck size={18} stroke={2} className="mm-check-icon" aria-hidden="true" /> Active email alerts</li>
+                  </ul>
+                  <button className="mm-pricing-cta" type="button" aria-label="Start free trial for Global Stores">Start free trial</button>
                 </article>
               ) : null}
             </div>
