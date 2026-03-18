@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { FaRegEye, FaRegEyeSlash } from "react-icons/fa";
-import { FiMoon, FiSun } from "react-icons/fi";
+import { User, UserCircle } from "lucide-react";
 import {
   IconUserPlus,
   IconRefresh,
@@ -23,26 +23,6 @@ const PricingPage = React.lazy(() => import("./pages/Pricing.jsx"));
 const PaymentPage = React.lazy(() => import("./pages/Payment.jsx"));
 const PrivacyPolicy = React.lazy(() => import("./pages/PrivacyPolicy.jsx"));
 const TermsOfService = React.lazy(() => import("./pages/TermsOfService.jsx"));
-
-const THEME_MODE_KEY = "metric-mango.theme-mode";
-const THEME_MODE_SEQUENCE = ["light", "dark"];
-
-function getInitialThemeMode() {
-  if (typeof window === "undefined") return "dark";
-  const storedMode = String(window.localStorage.getItem(THEME_MODE_KEY) || "").toLowerCase();
-  if (THEME_MODE_SEQUENCE.includes(storedMode)) return storedMode;
-  return "dark";
-}
-
-function resolveThemeMode(mode) {
-  return mode === "dark" ? "dark" : "light";
-}
-
-function nextThemeMode(currentMode) {
-  const currentIndex = THEME_MODE_SEQUENCE.indexOf(currentMode);
-  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % THEME_MODE_SEQUENCE.length;
-  return THEME_MODE_SEQUENCE[nextIndex];
-}
 
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -269,18 +249,19 @@ function LandingAuthModal({ open, mode, onClose, onAuthSuccess }) {
   );
 }
 
-function LandingPage({ themeMode, onToggleTheme }) {
+function LandingPage() {
   const navigate = useNavigate();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [selectedStore, setSelectedStore] = useState(null);
   const [authMode, setAuthMode] = useState("signin");
-  const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const [_isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const aboutDropdownRef = useRef(null);
+  const profileMenuRef = useRef(null);
   const howItWorksOpenRef = useRef(null);
   const howItWorksScrollTimerRef = useRef(null);
   const howItWorksCloseTimerRef = useRef(null);
-  const resolvedTheme = resolveThemeMode(themeMode);
 
   const [detectedStore, setDetectedStore] = useState(null);
 
@@ -357,6 +338,10 @@ function LandingPage({ themeMode, onToggleTheme }) {
     function handleKeyDown(event) {
       if (event.key !== "Escape") return;
       if (isAuthModalOpen) return;
+      if (isProfileMenuOpen) {
+        setIsProfileMenuOpen(false);
+        return;
+      }
       if (isAboutOpen) {
         setIsAboutOpen(false);
         return;
@@ -366,7 +351,7 @@ function LandingPage({ themeMode, onToggleTheme }) {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isAuthModalOpen, isAboutOpen, toggleHowItWorks]);
+  }, [isAuthModalOpen, isAboutOpen, isProfileMenuOpen, toggleHowItWorks]);
 
   useEffect(() => {
     return () => {
@@ -387,12 +372,24 @@ function LandingPage({ themeMode, onToggleTheme }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isAboutOpen]);
 
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        setIsProfileMenuOpen(false);
+      }
+    }
+    if (isProfileMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isProfileMenuOpen]);
+
   return (
     <div className="mm-landing-shell">
       <header className="mm-navbar">
         <div className="mm-navbar-inner">
           <Link className="mm-logo" to="/" aria-label="Metric Mango home">
-            <img className="mm-logo-image" src={resolvedTheme === "dark" ? "/logo-dark.svg" : "/logo.svg"} alt="Metric Mango" width="174" height="58" />
+            <img className="mm-logo-image" src="/logo.svg" alt="Metric Mango" width="174" height="58" />
           </Link>
           <nav className="mm-navbar-links" aria-label="Landing navigation">
             <a href="#features">Features</a>
@@ -448,29 +445,54 @@ function LandingPage({ themeMode, onToggleTheme }) {
             </span>
             <a href="#pricing">Pricing</a>
           </nav>
-          <div className="mm-navbar-actions">
+          <div className="mm-navbar-actions" ref={profileMenuRef}>
             <button
               type="button"
-              className="theme-toggle-btn theme-toggle-icon-btn mm-theme-toggle"
-              onClick={onToggleTheme}
-              title={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              aria-label={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              className="mm-profile-btn"
+              aria-haspopup="menu"
+              aria-expanded={isProfileMenuOpen}
+              aria-label="Open profile menu"
+              onClick={() => setIsProfileMenuOpen(prev => !prev)}
             >
-              {resolvedTheme === "dark" ? <FiMoon aria-hidden="true" /> : <FiSun aria-hidden="true" />}
+              <User size={18} strokeWidth={2} />
             </button>
-            <button type="button" className="mm-nav-auth-btn" onClick={() => openAuthModal("signin")}>
-              Sign In / Sign Up
-            </button>
+            <div
+              className={`mm-profile-dropdown ${isProfileMenuOpen ? "open" : ""}`}
+              role="menu"
+              aria-hidden={!isProfileMenuOpen}
+            >
+              <button
+                type="button"
+                className="mm-profile-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setIsProfileMenuOpen(false);
+                  openAuthModal("signin");
+                }}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                className="mm-profile-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setIsProfileMenuOpen(false);
+                  openAuthModal("signup");
+                }}
+              >
+                Sign Up
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       <main className="mm-landing-main">
         <section className="mm-hero" id="top">
-          <div className="mm-hero-glow" aria-hidden="true" />
           <span className="mm-hero-badge mm-fade-up mm-delay-1">For Shopify Store Owners</span>
           <h1 className="mm-display mm-fade-up mm-delay-2">Stop Guessing When to Restock.</h1>
-          <p className="mm-fade-up mm-delay-3">
+          <p className="mm-hero-subtitle mm-fade-up mm-delay-3">
             Get automated low-stock email alerts and simple demand forecasts. Never let a bestseller go out of stock or manage another complex inventory spreadsheet again.
           </p>
           <div className="mm-feature-pills mm-fade-up mm-delay-4">
@@ -479,21 +501,27 @@ function LandingPage({ themeMode, onToggleTheme }) {
             <span>Weekly Priority Reports</span>
           </div>
           <div className="mm-hero-ctas mm-fade-up mm-delay-5">
-            <button type="button" className="mm-cta mm-cta-primary" onClick={() => openAuthModal("signup")}>
+            <button type="button" className="mm-cta mm-hero-cta-primary" onClick={() => openAuthModal("signup")}>
               Start My Free Trial
             </button>
+            <button
+              id="how-it-works-btn"
+              type="button"
+              className="mm-cta mm-hero-cta-secondary"
+              onClick={toggleHowItWorks}
+            >
+              How it works
+            </button>
           </div>
-          <p className="mm-trust-whisper mm-fade-up mm-delay-6">
-            <strong><i>"Just plug in and go. The cheapest insurance policy against lost revenue."</i></strong>
-          </p>
-          <button
-            id="how-it-works-btn"
-            type="button"
-            className="mm-cta mm-cta-primary mm-how-link mm-fade-up mm-delay-6"
-            onClick={toggleHowItWorks}
-          >
-            {isHowItWorksOpen ? "Got it ↑" : "How it works →"}
-          </button>
+          <article className="mm-hero-support-card mm-fade-up mm-delay-6" aria-label="Trust and trial details">
+            <h3>Inventory confidence from day one</h3>
+            <p>Get actionable low-stock alerts and demand guidance without adding workflow overhead to your team.</p>
+            <div className="mm-hero-support-signals" aria-label="Trust signals">
+              <span>No credit card required</span>
+              <span>Cancel anytime</span>
+              <span>Trusted by 500+ stores</span>
+            </div>
+          </article>
         </section>
 
         <section className="mm-how-wrap" id="how-it-works">
@@ -619,7 +647,6 @@ function LandingPage({ themeMode, onToggleTheme }) {
             <div className="mm-pricing-grid">
               {detectedStore === 'india' ? (
                 <article className="mm-pricing-item mm-pricing-item--prominent" onClick={() => { setSelectedStore('india'); openAuthModal('signup'); }} style={{ cursor: 'pointer' }}>
-                  <div className="mm-pricing-popular">Most Popular</div>
                   <h3>India Stores</h3>
                   <p className="mm-pricing-amount">₹499<span>/month</span></p>
                   <p className="mm-pricing-note">For merchants billed in INR.</p>
@@ -634,7 +661,6 @@ function LandingPage({ themeMode, onToggleTheme }) {
               ) : null}
               {detectedStore === 'global' ? (
                 <article className="mm-pricing-item mm-pricing-item--prominent" onClick={() => { setSelectedStore('global'); openAuthModal('signup'); }} style={{ cursor: 'pointer' }}>
-                  <div className="mm-pricing-popular">Most Popular</div>
                   <h3>Global Stores</h3>
                   <p className="mm-pricing-amount">$9<span>/month</span></p>
                   <p className="mm-pricing-note">For non-India merchants billed in USD.</p>
@@ -852,19 +878,45 @@ function AuthPage({ mode }) {
   );
 }
 
-function DashboardLayout({ themeMode, onToggleTheme }) {
+function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, sessionExpired, isFirebaseConfigured, onboardingRequired } = useAuth();
   const { accessState, locked, overview } = useAccess();
-  const resolvedTheme = resolveThemeMode(themeMode);
+  const [isDashProfileOpen, setIsDashProfileOpen] = useState(false);
+  const dashProfileRef = useRef(null);
 
   const { isEmbedded } = useEmbedded();
 
   async function handleLogout() {
+    setIsDashProfileOpen(false);
     await logout();
     navigate("/signin", { replace: true });
   }
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dashProfileRef.current && !dashProfileRef.current.contains(event.target)) {
+        setIsDashProfileOpen(false);
+      }
+    }
+    if (isDashProfileOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isDashProfileOpen]);
+
+  useEffect(() => {
+    function handleEscape(event) {
+      if (event.key === "Escape") {
+        setIsDashProfileOpen(false);
+      }
+    }
+    if (isDashProfileOpen) {
+      window.addEventListener("keydown", handleEscape);
+    }
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [isDashProfileOpen]);
 
   if (!isFirebaseConfigured) {
     return (
@@ -881,19 +933,41 @@ function DashboardLayout({ themeMode, onToggleTheme }) {
     <div className="app">
       {!isEmbedded && (
         <header className="topbar">
-          <div className="brand" style={{ flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Link className="brand-logo-link" to="/" aria-label="Go to landing page" style={{ display: 'flex', alignItems: 'center' }}>
-                  <img className="brand-logo" src={resolvedTheme === "dark" ? "/logo-dark.svg" : "/logo.svg"} alt="Metric Mango" width="192" height="64" />
-                </Link>
-                {overview?.plan === 'active' && !accessState.trialExpired && !locked ? (
-                  <span style={{ background: 'linear-gradient(135deg, #F5C518 0%, #d6a800 100%)', color: '#161616', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '800', letterSpacing: '0.05em', height: 'fit-content', boxShadow: '0 2px 8px rgba(245, 197, 24, 0.25)' }}>
-                    PRO
-                  </span>
-                ) : null}
+          <div className="topbar-head">
+            <div className="brand" style={{ flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Link className="brand-logo-link" to="/" aria-label="Go to landing page" style={{ display: 'flex', alignItems: 'center' }}>
+                    <img className="brand-logo" src="/logo.svg" alt="Metric Mango" width="192" height="64" />
+                  </Link>
+                  {overview?.plan === 'active' && !accessState.trialExpired && !locked ? (
+                    <span style={{ background: 'linear-gradient(135deg, #F5C518 0%, #d6a800 100%)', color: '#161616', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '800', letterSpacing: '0.05em', height: 'fit-content', boxShadow: '0 2px 8px rgba(245, 197, 24, 0.25)' }}>
+                      PRO
+                    </span>
+                  ) : null}
+                </div>
+                <p>Predict demand. Prevent stockouts. Grow profit.</p>
               </div>
-              <p>Predict demand. Prevent stockouts. Grow profit.</p>
+            </div>
+            <div className="dashboard-profile-wrap" ref={dashProfileRef}>
+              {accessState.trialExpired || locked ? <span className="lock-pill">Locked</span> : null}
+              <button
+                type="button"
+                className="dashboard-profile-btn"
+                aria-label="Open account menu"
+                aria-haspopup="menu"
+                aria-expanded={isDashProfileOpen}
+                onClick={() => setIsDashProfileOpen(prev => !prev)}
+              >
+                <UserCircle size={18} aria-hidden="true" />
+              </button>
+              <div className={`dashboard-profile-dropdown ${isDashProfileOpen ? "open" : ""}`} role="menu" aria-hidden={!isDashProfileOpen}>
+                <div className="dashboard-profile-email">{user?.email || "Signed in user"}</div>
+                <div className="dashboard-profile-divider" />
+                <button type="button" role="menuitem" className="dashboard-profile-logout" onClick={handleLogout}>
+                  Logout
+                </button>
+              </div>
             </div>
           </div>
           <div className="topbar-right">
@@ -903,20 +977,6 @@ function DashboardLayout({ themeMode, onToggleTheme }) {
               <NavLink to="/dashboard/forecast" className={({ isActive }) => (isActive ? "active" : "")}>Forecast</NavLink>
               <NavLink to="/dashboard/pricing" className={({ isActive }) => (isActive ? "active" : "")}>Pricing</NavLink>
             </nav>
-            <div className="session-meta">
-              <span className="session-email">{user?.email || "Signed in"}</span>
-              {accessState.trialExpired || locked ? <span className="lock-pill">Locked</span> : null}
-              <button
-                type="button"
-                className="theme-toggle-btn theme-toggle-icon-btn"
-                onClick={onToggleTheme}
-                title={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-                aria-label={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              >
-                {resolvedTheme === "dark" ? <FiMoon aria-hidden="true" /> : <FiSun aria-hidden="true" />}
-              </button>
-              <Button type="button" variant="secondary" onClick={handleLogout}>Logout</Button>
-            </div>
           </div>
         </header>
       )}
@@ -1075,14 +1135,6 @@ function OnboardingPage() {
 export default function App() {
   const location = useLocation();
   const forgotMode = new URLSearchParams(location.search).get("forgot") === "1";
-  const [themeMode, setThemeMode] = useState(getInitialThemeMode);
-
-  React.useEffect(() => {
-    const root = document.documentElement;
-    const resolved = resolveThemeMode(themeMode);
-    root.setAttribute("data-theme", resolved);
-    window.localStorage.setItem(THEME_MODE_KEY, themeMode);
-  }, [themeMode]);
 
   return (
     <React.Suspense fallback={
@@ -1093,7 +1145,7 @@ export default function App() {
       </div>
     }>
       <Routes>
-        <Route path="/" element={<LandingPage themeMode={themeMode} onToggleTheme={() => setThemeMode(current => nextThemeMode(current))} />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/signin" element={<PublicOnlyRoute><AuthPage mode={forgotMode ? "forgot" : "signin"} /></PublicOnlyRoute>} />
         <Route path="/signup" element={<PublicOnlyRoute><AuthPage mode="signup" /></PublicOnlyRoute>} />
 
@@ -1101,7 +1153,7 @@ export default function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <DashboardLayout themeMode={themeMode} onToggleTheme={() => setThemeMode(current => nextThemeMode(current))} />
+              <DashboardLayout />
             </ProtectedRoute>
           }
         >
